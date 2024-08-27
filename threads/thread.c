@@ -625,3 +625,26 @@ allocate_tid (void) {
 
 	return tid;
 }
+
+/** 1
+ * 일어날 시간을 저장한 다음에 재워야 할 스레드를 sleep_list에 추가하고,
+ * 스레드 상태를 block state로 만들어 준다.
+ * CPU가 항상 실행 상태를 유지하게 하기 위해서 idle 스레드는 sleep되지 않아야 한다.
+ */
+void
+thread_sleep (int64_t ticks)
+{
+  struct thread *cur;
+  enum intr_level old_level;
+
+  old_level = intr_disable ();	// 인터럽트 off 하고 old_level에는 off하기 이전의 interrupt state를 넣는다.
+  cur = thread_current ();
+  
+  ASSERT (cur != idle_thread); // idle thread는 sleep 되어서는 안 된다.
+
+  cur->wakeup_tick = ticks;			// 일어날 시간을 저장
+  list_push_back (&sleep_list, &cur->elem);	// sleep_list 에 추가
+  thread_block ();				// block 상태로 변경
+
+  intr_set_level (old_level);	// 인터럽트 on
+}

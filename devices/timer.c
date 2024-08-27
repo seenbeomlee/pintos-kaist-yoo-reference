@@ -98,11 +98,12 @@ timer_elapsed (int64_t then) {
  */
 void
 timer_sleep (int64_t ticks) {
-	int64_t start = timer_ticks (); // timer_ticks() 함수는 현재 ticsk를 반환한다.
+	int64_t start = timer_ticks (); // timer_ticks() 함수는 현재 ticks를 반환한다.
+	// ASSERT (intr_get_level () == INTR_ON);
+	// while (timer_elapsed (start) < ticks) // timer_elapsed(t)함수는 t 이후로 경과된 시간(ticks)을 반환한다.
+	// 	thread_yield ();
 
-	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks) // timer_elapsed(t)함수는 t 이후로 경과된 시간(ticks)을 반환한다.
-		thread_yield ();
+	thread_sleep (start + ticks);
 }
 
 /* Suspends execution for approximately MS milliseconds. */
