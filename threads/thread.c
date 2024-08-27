@@ -228,6 +228,11 @@ thread_create (const char *name, int priority,
 	 */
 	thread_unblock (t);
 
+	/** 1
+	 * runnning thread의 priority 변경으로 인한 priority 재확인
+	 */
+	thread_test_preemption ();
+
 	return tid;
 }
 
@@ -335,6 +340,10 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	/** 1
+	 * runnning thread의 priority 변경으로 인한 priority 재확인
+	 */
+	thread_test_preemption ();
 }
 
 /* Returns the current thread's priority. */
@@ -696,4 +705,21 @@ thread_compare_priority (struct list_elem *l, struct list_elem *s, void *aux UNU
 {
     return list_entry (l, struct thread, elem)->priority
          > list_entry (s, struct thread, elem)->priority;
+}
+
+/** 1
+ * 현재 실행중인 running thread의 priority가 바뀌는 순간이 있다.
+ * 이때 바뀐 priority of running thread가 ready_list의 가장 높은 priority보다 낮다면, pop해서 CPU 점유를 넘겨주어야 한다.
+ * 현재 실행중인 running thread의 priority가 바뀌는 순간은 두 가지 경우이다.
+ * 1. thread_create()
+ * 2. thread_set_priority()
+ * 두 가지 경우의 마지막에 running_thread와 ready_list의 가장 앞의 thread의 priority를 비교하는 코드를 넣어주어야 한다.
+ */
+void 
+thread_test_preemption (void)
+{
+    if (!list_empty (&ready_list) && 
+    thread_current ()->priority < 
+    list_entry (list_front (&ready_list), struct thread, elem)->priority)
+        thread_yield (); // CPU의 점유권을 넘겨준다.
 }
