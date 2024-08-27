@@ -3,6 +3,7 @@
 
 #include <list.h>
 #include <stdbool.h>
+#include <debug.h> // for using UNUSED
 
 /* A counting semaphore. */
 /** Semaphores
@@ -68,6 +69,9 @@ void cond_init (struct condition *);
 void cond_wait (struct condition *, struct lock *);
 void cond_signal (struct condition *, struct lock *);
 void cond_broadcast (struct condition *, struct lock *);
+
+/** 1 */
+bool sema_compare_priority (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED);
 
 /* Optimization barrier.
  *

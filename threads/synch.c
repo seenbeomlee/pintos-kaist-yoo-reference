@@ -57,6 +57,11 @@ sema_init (struct semaphore *sema, unsigned value) {
    interrupts disabled, but if it sleeps then the next scheduled
    thread will probably turn interrupts back on. This is
    sema_down function. */
+
+	/**
+	 * 공유자원(critical region)을 사용하고자 하는 thread는 sema_down을 실행하고,
+	 * 사용 가능한 공유자원이 없다면 sema->waiters list에 list_push_back 함수로 맨 뒤에 추가된다. <- list_insert_ordered로 수정해야 하는 지점
+	 */
 void
 sema_down (struct semaphore *sema) {
 	enum intr_level old_level;
@@ -66,7 +71,11 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
-		list_push_back (&sema->waiters, &thread_current ()->elem);
+		// list_push_back (&sema->waiters, &thread_current ()->elem);
+		/**
+		 * semaphore에 추가되는 element들은 thread 이므로, thread.c에서 사용하였던 thread_compare_priority 함수를 그대로 사용하면 된다.
+		 */
+		list_insert_ordered (&sema->waiters, &thread_current ()->elem, thread_compare_priority, 0);
 		thread_block ();
 	}
 	sema->value--;
@@ -102,6 +111,12 @@ sema_try_down (struct semaphore *sema) {
    and wakes up one thread of those waiting for SEMA, if any.
 
    This function may be called from an interrupt handler. */
+/** 1
+ * 현재는 공유자원의 사용을 마친 thread가 sema_up을 하면, thread_unblock을 하는데,
+ * list_pop_front() 로 인해서 sema->waiters list의 상단에 있는 waiter thread를 unblock 시킨다.
+ * 이를 ready_list의 round-robin을 해결하기 위해 적용했던 것처럼,
+ * sema_up에서 list_push_back() 하던 것을 list_insert_ordered()로 변경한다.
+ */
 void
 sema_up (struct semaphore *sema) {
 	enum intr_level old_level;
@@ -109,10 +124,20 @@ sema_up (struct semaphore *sema) {
 	ASSERT (sema != NULL);
 
 	old_level = intr_disable ();
-	if (!list_empty (&sema->waiters))
+	if (!list_empty (&sema->waiters)) {
+		/**
+		 * sema_down 했다가, sema_up 하는 동안 waiters_list에 있는 thread들의 priority에 변경이 생겼을 수도 있다.
+		 * 따라서, waiters_list를 내림차순으로 정렬하여 준다. -> 이럴거면 sema_up할때 굳이 왜 list_insert_ordered 하는거지?
+		 */
+		list_sort (&sema->waiters, thread_compare_priority, 0);
 		thread_unblock (list_entry (list_pop_front (&sema->waiters),
 					struct thread, elem));
+	}
 	sema->value++;
+	/**
+	 * unblock된 thread가 running thread보다 priority가 높을 수 있으므로, thread_test_preemtion ()을 통해 CPU 선점이 일어나도록 한다.
+	 */
+	thread_test_preemption ();
 	intr_set_level (old_level);
 }
 
@@ -190,7 +215,7 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!lock_held_by_current_thread (lock));
 
 	sema_down (&lock->semaphore);
-	lock->holder = thread_current ();
+	lock->holder = thread_current (); // lock_release()를 호출할 수 있는 holder는 lock_acquire()을 호출한 thread가 된다.
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -221,7 +246,7 @@ lock_try_acquire (struct lock *lock) {
 void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
-	ASSERT (lock_held_by_current_thread (lock));
+	ASSERT (lock_held_by_current_thread (lock)); // lock이 semaphore와 다른 점은, lock_release()는 lock_holder만이 호출할 수 있다는 것이다.
 
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
@@ -283,7 +308,14 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	sema_init (&waiter.semaphore, 0);
-	list_push_back (&cond->waiters, &waiter.elem);
+	/** 1
+	 * semaphore의 waiters는 thread들의 list 였다면,
+	 * condtion의 waiters는 semaphore들의 list 이다.
+	 * 이 역시도, cond_signal에서 list_pop_front 하므로, list_push_back()이 아니라, list_insert_ordered 해야한다.
+	 * 이때, 입력받는 인자는 이전과 달리 thread가 아니라, semaphore_elem 구조체이기 때문에 따로 함수를 선언해야 한다.
+	 */
+	// list_push_back (&cond->waiters, &waiter.elem); 
+	list_insert_ordered (&cond->waiters, &waiter.elem, sema_compare_priority, 0);
 	lock_release (lock);
 	sema_down (&waiter.semaphore);
 	lock_acquire (lock);
@@ -303,9 +335,16 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (!intr_context ());
 	ASSERT (lock_held_by_current_thread (lock));
 
-	if (!list_empty (&cond->waiters))
+	if (!list_empty (&cond->waiters)) {
+	/**
+	 * cond->waiters는 semaphore들의 list이다. (즉 2중 list임)
+	 * 이때, semaphore list는 list_push_back()이 아니라, list_insert_ordered()를 통해 내림차순으로 정렬시켰다.
+	 * 따라서, waiter의 최상단에는 이미 각 semaphore waiters list 안에서 가장 priority가 높은 thread 가 놓여있다.
+	 */
+		list_sort (&cond->waiters, sema_compare_priority, 0); // wait 도중에 priority가 바뀌었을 수 있으니, list_sort()로 내림차순 정렬해준다.
 		sema_up (&list_entry (list_pop_front (&cond->waiters),
-					struct semaphore_elem, elem)->semaphore);
+					struct semaphore_elem, elem)->semaphore); 
+	}
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
@@ -321,4 +360,21 @@ cond_broadcast (struct condition *cond, struct lock *lock) {
 
 	while (!list_empty (&cond->waiters))
 		cond_signal (cond, lock);
+}
+
+/** 1
+ * cond_wait()에서 list_push_back()이 아니라, list_insert_ordered() 하기 위해서 필요하다.
+ * 이때, cond_waiters는 thread들의 list가 아니라, semaphore들의 list이기 때문에, 새로운 비교 함수를 정의한다.
+ */
+bool 
+sema_compare_priority (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED) {
+	struct semaphore_elem *l_sema = list_entry (l, struct semaphore_elem, elem);
+	struct semaphore_elem *s_sema = list_entry (s, struct semaphore_elem, elem);
+
+	struct list *waiter_l_sema = &(l_sema->semaphore.waiters);
+	struct list *waiter_s_sema = &(s_sema->semaphore.waiters);
+
+	// l의 priority가 s의 priority보다 작다면 true를 반환하여야 priority를 기준으로 내림차순으로 정렬된다.
+	return list_entry (list_begin (waiter_l_sema), struct thread, elem)->priority
+		 > list_entry (list_begin (waiter_s_sema), struct thread, elem)->priority;
 }
