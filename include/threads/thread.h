@@ -150,4 +150,10 @@ int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
 
+/** 1
+ * sleep, awake 함수 추가
+ */
+void thread_sleep(int64_t ticks);
+void thread_awake(int64_t ticks);
+
 #endif /* threads/thread.h */

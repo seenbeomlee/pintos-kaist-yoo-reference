@@ -144,6 +144,7 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++; // 매 tick마다 ticks라는 변수를 증가시킴으로써 시간을 잰다.
 	thread_tick (); 
+	thread_awake (ticks); // ticks가 증가할때마다 awake 작업을 수행한다.
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
