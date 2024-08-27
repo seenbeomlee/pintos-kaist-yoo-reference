@@ -24,6 +24,13 @@
    Do not modify this value. */
 #define THREAD_BASIC 0xd42df210
 
+/** 1
+ * 현재 핀토스에서 thread를 관리하는 list는 ready_list와 all_list 두 개만 존재한다.
+ * 잠이 들어 block 상태가 된 thread들은 all_list에 존재하지만,
+ * sleep state인 thread들만 보관하는 리스트를 만들어 관리한다.
+ */
+static struct list sleep_list;
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -109,6 +116,7 @@ thread_init (void) {
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&destruction_req);
+	list_init (&sleep_list); // 1 sleep_list를 추가하였으므로, 초기화한다.
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -124,6 +132,9 @@ thread_start (void) {
 	/* Create the idle thread. */
 	struct semaphore idle_started;
 	sema_init (&idle_started, 0);
+	/**
+	 * thread_create하는 순간 idle thread가 생성되고, 동시에 idle 함수가 실행된다.
+	 */
 	thread_create ("idle", PRI_MIN, idle, &idle_started);
 
 	/* Start preemptive thread scheduling. */
@@ -150,6 +161,12 @@ thread_tick (void) {
 		kernel_ticks++;
 
 	/* Enforce preemption. */
+	/**
+	 * 이렇게 증가한 ticks가 TIME_SLICE보다 커지는 순간에 intr_yield_on_return()이라는 인터럽트가 실행된다.
+	 * 이 인터럽트는 결과적으로 thread_yield()를 실행시킨다.
+	 * 즉, 하나의 thread에서 scheduling 함수들이 호출되지 않더라도, time_interrupt에 의해서
+	 * 일정 시간(ticks >= TIME_SLICE)마다 자동으로 scheduling이 발생한다.
+	 */
 	if (++thread_ticks >= TIME_SLICE)
 		intr_yield_on_return ();
 }
@@ -361,6 +378,13 @@ idle (void *idle_started_ UNUSED) {
 	struct semaphore *idle_started = idle_started_;
 
 	idle_thread = thread_current ();
+	/**
+	 * idle thread는 한 번 schedule을 받고, 바로 sema_up을 하여 thread_start()의 마지막 sema_down을 풀어준다.
+	 * thread_start가 작업을 끝내고 run_action()이 실행될 수 있도록 해주고, idle 자신은 block 된다.
+	 * idle thread는 pintos에서 실행 가능한 thread가 하나도 없을 때, wake 되어 다시 작동하는데,
+	 * 이는 CPU가 무조건 하나의 thread 는 실행하고 있는 상태를 만들기 위함이다.
+	 * => 아마 껐다 키는데 소모되는 자원보다 하나를 실행하고 있는 상태에서 소모되는 자원이 더 적기 때문일듯?
+	 */
 	sema_up (idle_started);
 
 	for (;;) {
@@ -385,6 +409,15 @@ idle (void *idle_started_ UNUSED) {
 }
 
 /* Function used as the basis for a kernel thread. */
+/**
+ * thread_func *function은 이 kernel이 실행할 함수를 가리킨다.
+ * void *aux는 보조 파라미터로, synchronization을 위한 semaphore 등이 들어온다.
+ * 여기서 실행시키는 function은 이 thread가 종료될 때까지 실행되는 main 함수이다.
+ * 즉, 이 function은 idle thread라고 불리는 thread를 하나 실행시키는데,
+ * 이 idle thread는 하나의 c 프로그램에서 하나의 main 함수 안에서 여러 함수의 호출이 이루어지는 것처럼,
+ * pintos kernel위에서 여러 thread들이 동시에 실행될 수 있도록 하는 단 하나의 main thread인 셈이다.
+ * pintos의 목적은, 이러한 idle thread 위에 여러 thread들이 동시에 실행될 수 있도록 만드는 것이다.
+ */
 static void
 kernel_thread (thread_func *function, void *aux) {
 	ASSERT (function != NULL);
@@ -540,12 +573,16 @@ do_schedule(int status) {
 
 static void
 schedule (void) {
-	struct thread *curr = running_thread ();
-	struct thread *next = next_thread_to_run ();
+	struct thread *curr = running_thread (); // 현재 실행중인 thread A를 반환한다.
+	struct thread *next = next_thread_to_run (); // 다음에 실행될 thread B를 반환한다.
 
-	ASSERT (intr_get_level () == INTR_OFF);
-	ASSERT (curr->status != THREAD_RUNNING);
-	ASSERT (is_thread (next));
+	ASSERT (intr_get_level () == INTR_OFF); // scheduling하는 동안에는 interrupt가 발생하면 안되기 때문에 INTR_OFF인지 확인한다.
+	/** ASSERT (curr->status != THREAD_RUNNING); 
+	 * thread A가 CPU 소유권을 thread B에게 넘겨주기 전에 running thread(A)는 그 상태를
+	 * running 이외의 다른 상태로 바꾸어주는 작업이 선행되어 있어야 하고, 이를 확인하는 부분이다.
+	*/
+	ASSERT (curr->status != THREAD_RUNNING); 
+	ASSERT (is_thread (next)); // next_thread_to_run()에 의해 올바른 thread가 return 되었는지 확인한다.
 	/* Mark us as running. */
 	next->status = THREAD_RUNNING;
 

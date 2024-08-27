@@ -50,7 +50,7 @@ typedef int tid_t;
  *           |                                 |
  *           |                                 |
  *           |                                 |
- *           +---------------------------------+
+ *           +---------------------------------+ // 아래로는 TCB (thread control block) 영역이다.
  *           |              magic              |
  *           |            intr_frame           |
  *           |                :                |
@@ -85,12 +85,19 @@ typedef int tid_t;
  * only because they are mutually exclusive: only a thread in the
  * ready state is on the run queue, whereas only a thread in the
  * blocked state is on a semaphore wait list. */
-struct thread {
+struct thread { // TCB 영역의 구성을 의미한다.
 	/* Owned by thread.c. */
 	tid_t tid;                          /* Thread identifier. */
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+	/** 1
+	 * thread가 잠이 들 때, ready state가 아니라, block state로 보내고, 깨어날 시간이 되면 깨워서 ready state로 보낸다.
+	 * 우선, block state에서는 스레드가 일어날 시간이 되었는지 매 tick 마다 주기적으로 확인하지 않기 때문에,
+	 * thread마다 일어나야 하는 시간에 대한 정보를 저장하고 있어야 한다.
+	 * wakeup_tick 이라는 변수를 만들어 thread 구조체에 추가한다.
+	 */
+	int64_t wakeup_tick;	
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */

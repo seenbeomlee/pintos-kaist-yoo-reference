@@ -169,8 +169,9 @@ sema_test_helper (void *sema_) {
 void
 lock_init (struct lock *lock) {
 	ASSERT (lock != NULL);
-
+  // 처음 init되는 시점에서는 lock을 release (1->0)한 thread가 존재하지 않는다.
 	lock->holder = NULL;
+	// lock은 '1'로 초기화된 세마포어와 동일하다.
 	sema_init (&lock->semaphore, 1);
 }
 

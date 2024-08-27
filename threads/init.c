@@ -79,6 +79,10 @@ main (void) {
 
 	/* Initialize ourselves as a thread so we can use locks,
 	   then enable console locking. */
+	/**
+	 * pintos에서 user thread는 항상 user_thread라고 표시되어 있으며,
+	 * 계속해서 언급되는 thread는 항상 kernel thread를 말한다.
+	 */
 	thread_init ();
 	console_init ();
 
