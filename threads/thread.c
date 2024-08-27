@@ -210,7 +210,7 @@ thread_create (const char *name, int priority,
 	init_thread (t, name, priority);
 	tid = t->tid = allocate_tid ();
 
-	/* Call the kernel_thread if it scheduled.
+	/* Call the kernel_thread if it scheduled. 
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
 	t->tf.rip = (uintptr_t) kernel_thread;
 	t->tf.R.rdi = (uint64_t) function;
@@ -222,6 +222,10 @@ thread_create (const char *name, int priority,
 	t->tf.eflags = FLAG_IF;
 
 	/* Add to run queue. */
+	/** 1
+	 * thread_unblock(), thread_yield, thread_create()의 경우 list_puch_back이 list_insert_ordered로 수정되어야 한다.
+	 * thread_create()의 경우, 새로운 thread가 ready_list에 추가되지만, thread_unblock() 함수를 포함하기 때문에 unblock() 수정하면 얘도 같이 수정된다.
+	 */
 	thread_unblock (t);
 
 	return tid;
@@ -238,7 +242,7 @@ thread_block (void) {
 	ASSERT (!intr_context ());
 	ASSERT (intr_get_level () == INTR_OFF);
 	thread_current ()->status = THREAD_BLOCKED;
-	schedule ();
+	schedule (); // running thread가 CPU를 양보한다.
 }
 
 /* Transitions a blocked thread T to the ready-to-run state.
@@ -257,7 +261,8 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	// list_push_back (&ready_list, &t->elem); // unblock된 thread를 ready_list에 추가한다.
+	list_insert_ordered (&ready_list, &t->elem, thread_compare_priority, 0); // priority scheduling (1)
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -305,7 +310,7 @@ thread_exit (void) {
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
-	do_schedule (THREAD_DYING);
+	do_schedule (THREAD_DYING); // running thread가 CPU를 양보한다.
 	NOT_REACHED ();
 }
 
@@ -320,8 +325,9 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
-	do_schedule (THREAD_READY);
+		// list_push_back (&ready_list, &curr->elem); // yield 된 thread를 ready_list에 추가한다.
+		list_insert_ordered (&ready_list, &curr->elem, thread_compare_priority, 0); // priority scheduling (1)
+	do_schedule (THREAD_READY); // running thread가 CPU를 양보한다.
 	intr_set_level (old_level);
 }
 
@@ -454,6 +460,13 @@ next_thread_to_run (void) {
 	if (list_empty (&ready_list))
 		return idle_thread;
 	else
+	/**
+	 * 반환값을 보면, !list_empty일 때는, list_pop_front (&ready_list)를 하고 있다.
+	 * 즉, ready_list의 맨 앞 항목을 반환하는 round-robin 방식을 채택하고 있다는 것을 알 수 있다.
+	 * 이러한 방식은 우선순위 없이 ready_list에 들어온 순서대로 실행하여 가장 간단하지만,
+	 * 제대로 된 우선순위 스케쥴링이 이루어지고 있지 않다고 할 수 있다.
+	 * 이를 유지시키면서 priority scheduling을 구현할 수 있도록 -> ready_list에 push()할 때, priority 순서에 맞추어 push 하도록 한다.
+	 */
 		return list_entry (list_pop_front (&ready_list), struct thread, elem);
 }
 
@@ -669,4 +682,18 @@ thread_awake (int64_t ticks)
     else 
       e = list_next (e);
   }
+}
+
+/** 1
+ * list_insert_ordered() 함수는 list_insert() 를 통해 현재 받은 list_elem을 현재 비교대상인 e의 앞(prev)에 삽입(insert)한다.
+ * ready_list에서 thread를 pop할 때, 가장 앞에서 꺼내기 때문에 ready_list의 가장 앞에는 priority가 가장 높은 thread가 와야 한다.
+ * ready_list는 내림차순으로 정렬되어야 한다.
+ * if (less (elem, e, aux))가 elem > e 인 순간에 break;를 실행해야 한다. (볼 것도 없이 그 뒤로는 모조리 elem보다 priority가 낮은 thread)
+ * 따라서, less (elem, e, aux)는 elem > e 일 때 true를 반환하는 함수이다. 
+ */
+bool 
+thread_compare_priority (struct list_elem *l, struct list_elem *s, void *aux UNUSED)
+{
+    return list_entry (l, struct thread, elem)->priority
+         > list_entry (s, struct thread, elem)->priority;
 }
