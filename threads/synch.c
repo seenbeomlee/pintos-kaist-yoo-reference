@@ -208,14 +208,28 @@ lock_init (struct lock *lock) {
    interrupt handler.  This function may be called with
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
+/** 1
+* lock_acquire()을 요청하는 스레드가 실행되고 있다는 자체로 lock을 가지고 있는 스레드보다 priority가 높다는 뜻이기 때문에,
+if(cur->priority > lock->holder->priority) 등의 비교조건은 필요하지 않다.
+*/
 void
 lock_acquire (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
-	sema_down (&lock->semaphore);
-	lock->holder = thread_current (); // lock_release()를 호출할 수 있는 holder는 lock_acquire()을 호출한 thread가 된다.
+  struct thread *cur = thread_current ();
+  if (lock->holder) { // lock을 점유하고 있는 thread가 있다면,
+    cur->wait_on_lock = lock; // lock_acquire()을 요청한 현재 thread의 wait_on_lock에 lock을 추가하고, 
+    list_insert_ordered (&lock->holder->donations, &cur->donation_elem, // holder의 donations list에 현재 스레드를 추가한다.
+    			thread_compare_donate_priority, 0);
+    donate_priority (); // priority donation을 실행한다.
+  }
+	// 현재 lock을 소유하고 있는 스레드가 없다면 해당하는 lock을 바로 차지하면 된다
+  sema_down (&lock->semaphore); // sema_down을 기점으로 이전은 lock을 얻기 전, 이후는 lock을 얻은 후이다.
+  
+  cur->wait_on_lock = NULL;
+  lock->holder = cur; // lock_release()를 호출할 수 있는 holder는 lock_acquire()을 호출한 thread가 된다.
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -243,11 +257,21 @@ lock_try_acquire (struct lock *lock) {
    An interrupt handler cannot acquire a lock, so it does not
    make sense to try to release a lock within an interrupt
    handler. */
+/** 1
+ * sema_up하여 lock의 점유를 반환하기 이전에
+ * 현재 이 lock을 사용하기 위해 나에게 priority를 빌려준 thread들을 donations list에서 제거하고,
+ * 나의 priority를 재설정하는 작업이 필요하다.
+ * 1. 남아있는 donations list에서 가장 높은 priority를 가지고 있는 thread의 priority를 받아서 cur의 priority로 설정하던가,
+ * 2. donations list == NULL 이라면, 원래 값인 init_priority로 설정해주면 된다.
+ */
 void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock)); // lock이 semaphore와 다른 점은, lock_release()는 lock_holder만이 호출할 수 있다는 것이다.
 
+  remove_with_lock (lock);
+  refresh_priority ();
+  
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 }

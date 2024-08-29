@@ -97,7 +97,18 @@ struct thread { // TCB 영역의 구성을 의미한다.
 	 * thread마다 일어나야 하는 시간에 대한 정보를 저장하고 있어야 한다.
 	 * wakeup_tick 이라는 변수를 만들어 thread 구조체에 추가한다.
 	 */
-	int64_t wakeup_tick;	
+	int64_t wakeup_tick;
+
+/** 1
+ * priority inversion을 해결하기 위해 priority donation을 구현해야 한다.
+ * 1. multiple donation
+ * 2. nested donation
+ * 을 모두 구현해야 한다.
+ */
+	int init_priority; // 스레드가 priority를 양도받았다가 다시 반납할 때 원래의 priority를 복원할 수 있도록 고유의 priority 값을 저장하는 변수이다.
+	struct lock *wait_on_lock; // 스레드가 현재 얻기 위해 기다리고 있는 lock으로 스레드는 이 lock이 release 되기를 기다린다.
+	struct list donations; // 자신에게 priority를 나누어즌 스레드들의 list
+	struct list_elem donation_elem; // donations list를 관리하기 위한 element로 thread 구조체의 그냥 elem과 구분하여 사용한다.
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
@@ -161,5 +172,13 @@ void thread_awake(int64_t ticks);
  */
 bool thread_compare_priority (struct list_elem *l, struct list_elem *s, void *aux UNUSED);
 void thread_test_preemption (void);
+
+/** 1
+ * thread_compare_donate_priority 함수는 thread_compare_priority 의 역할을 donation_elem 에 대하여 하는 함수이다.
+ */
+bool thread_compare_donate_priority (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED);
+void donate_priority (void);
+void remove_with_lock (struct lock *lock);
+void refresh_priority (void);
 
 #endif /* threads/thread.h */

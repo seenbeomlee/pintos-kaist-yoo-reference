@@ -339,7 +339,14 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	thread_current ()->init_priority = new_priority;
+
+	/** 1
+	 * 만약, 현재 진행중인 running thread의 priority 변경이 일어났을 때, (즉, init_priority가 변경되었을 때)
+	 * donations list에 있는 thread들보다 priority가 높아지는 경우가 발생할 수 있다.
+	 * 이 경우 priority는 donations list 중 가장 높은 priority가 아니라, 새로 바뀐 priority가 적용될 수 있게 해야 한다.
+	 */
+	refresh_priority ();
 	/** 1
 	 * runnning thread의 priority 변경으로 인한 priority 재확인
 	 */
@@ -455,6 +462,14 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->status = THREAD_BLOCKED;
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
+
+/** 1
+ * priority donation을 위해 추가한 변수 초기화
+ */
+	t->init_priority = priority;
+  t->wait_on_lock = NULL;
+  list_init (&t->donations);
+
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 }
@@ -722,4 +737,78 @@ thread_test_preemption (void)
     thread_current ()->priority < 
     list_entry (list_front (&ready_list), struct thread, elem)->priority)
         thread_yield (); // CPU의 점유권을 넘겨준다.
+}
+
+/** 1
+ * thread_compare_donate_priority 함수는 thread_compare_priority 의 역할을 donation_elem 에 대하여 하는 함수이다. 
+ */
+bool
+thread_compare_donate_priority (const struct list_elem *l, 
+				const struct list_elem *s, void *aux UNUSED)
+{
+	return list_entry (l, struct thread, donation_elem)->priority
+		 > list_entry (s, struct thread, donation_elem)->priority;
+}
+
+/** 1
+ * 자신의 priority를 필요한 lock을 점유하고 있는 스레드에게 빌려주는 함수이다.
+ * nested donation을 해결하기 위해 하위에 연결된 모든 스레드에 대해서 donation이 일어나야 한다.
+ */
+void
+donate_priority (void)
+{
+  int depth; // nested의 최대 깊이를 지정해주기 위해 사용한다. max_depth == 8 왜?
+  struct thread *cur = thread_current ();
+
+  for (depth = 0; depth < 8; depth++){
+    if (!cur->wait_on_lock) break; // if wait_on_lock == NULL이면 더 이상 donation을 진행할 필요가 없다.
+		/** 1
+		 * cur->wait_on_lock이 NULL이면 요청한 해당 lock을 acquire()할 수 있다는 말이다.
+		 * 그게 아니라면, 스레드가 lock에 걸려있다는 말이므로, 그 lock을 점유하고 있는 holder thread에게 priority를 넘겨주는 방식을
+		 * 최대 깊이 8의 스레드까지 반복한다.
+		 */
+      struct thread *holder = cur->wait_on_lock->holder;
+      holder->priority = cur->priority;
+      cur = holder;
+  }
+}
+
+/** 1
+ * thread curr에서 lock_release(B)를 수행한다.
+ * lock B를 사용하기 위해서 curr에 priority를 나누어 주었던 thread H는 priority를 빌려줘야 할 이유가 없다.
+ * donations list에서 thread H를 지워주어야 한다.
+ * 그 후, thread H가 빌려주었던 priority를 지우고, 다음 priority로 재설정(refresh)해야 한다.
+ */
+void
+remove_with_lock (struct lock *lock)
+{
+  struct list_elem *e;
+  struct thread *cur = thread_current ();
+
+  for (e = list_begin (&cur->donations); e != list_end (&cur->donations); e = list_next (e)){
+    struct thread *t = list_entry (e, struct thread, donation_elem);
+    if (t->wait_on_lock == lock) // wait_on_lock이 이번에 release하는 lock이라면 해당 thread가 remove 대상이다.
+      list_remove (&t->donation_elem); // donations list와 관련된 작업에서는 elem이 아니라, donation_elem을 사용해야 한다.
+  }
+}
+
+/** 1
+ * init_priority와 donations list의 max_priority중 더 높은 값으로 curr->priority를 설정한다.
+ * 1. lock_release ()를 실행하였을 경우, curr thread의 priority를 재설정(refresh)해야 한다.
+ * 2. thread_set_priority ()에서 활용한다.
+ */
+void
+refresh_priority (void)
+{
+  struct thread *cur = thread_current ();
+
+  cur->priority = cur->init_priority;
+  
+  if (!list_empty (&cur->donations)) { // list_empty()라면, cur->priority = cur->init_priority 하면 끝임.
+    list_sort (&cur->donations, thread_compare_donate_priority, 0); // list_sort()는 priority가 가장 높은 thread를 고르기 위해 priority를 기준으로 내림차순 정렬한다. 
+
+    struct thread *front = list_entry (list_front (&cur->donations), struct thread, donation_elem); // 맨 앞을 뽑는다.
+    if (front->priority > cur->priority) // 만일, front->priority > cur->priority라면,
+      cur->priority = front->priority; // priority donation을 수행한다.
+  } 
 }
