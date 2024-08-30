@@ -27,6 +27,12 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+/** 1
+ * for 4BSD scheduler
+ */          
+#define NICE_DEFAULT 0
+#define RECENT_CPU_DEFAULT 0
+#define LOAD_AVG_DEFAULT 0
 
 /* A kernel thread or user process.
  *
@@ -91,6 +97,10 @@ struct thread { // TCB 영역의 구성을 의미한다.
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+
+	/* Shared between thread.c and synch.c. */
+	struct list_elem elem;              /* List element. */
+
 	/** 1
 	 * thread가 잠이 들 때, ready state가 아니라, block state로 보내고, 깨어날 시간이 되면 깨워서 ready state로 보낸다.
 	 * 우선, block state에서는 스레드가 일어날 시간이 되었는지 매 tick 마다 주기적으로 확인하지 않기 때문에,
@@ -110,8 +120,26 @@ struct thread { // TCB 영역의 구성을 의미한다.
 	struct list donations; // 자신에게 priority를 나누어즌 스레드들의 list
 	struct list_elem donation_elem; // donations list를 관리하기 위한 element로 thread 구조체의 그냥 elem과 구분하여 사용한다.
 
-	/* Shared between thread.c and synch.c. */
-	struct list_elem elem;              /* List element. */
+/** 1 
+ * 각 스레드는 이 스레드가 다른 스레드에 대해 어떠한 성질을 가지는지를 나타내는 정수의 nice 값을 가진다.
+ * 이 값은 다른 thread에게 자신의 CPU time을 얼마나 잘 양보하는지를 나타낸다.
+ * -20 <= nice value <= 20의 값을 가진다.
+ * 1. nice value < 0 값이 작을수록 자신의 CPU time을 다른 thread에게 양보하는 정도가 크다.
+ * 2. nice value == 0 thread의 priority에 영향을 미치지 않는다.
+ * 3. nice value > 0 값이 클수록 다른 thread의 CPU time을 더 많이 빼앗아 온다.
+ */
+	int nice;
+/** 1
+ * thread가 최근에 얼마나 많은 CPU time을 사용했는지를 나타내는 실수의 recent_cpu 값을 가진다.
+ * 이 값이 클수록 최근에 더 많은 CPU를 사용했음을 의미하므로, 우선순위(priority)는 낮아진다.
+ * RECENT_CPU_DEFAULT : 0
+ * 매 tick마다 running thread의 recent_cpu 값이 1만큼 증가한다. (idle thread가 아닐 때)
+ * 매 1초마다 모든 thread의 recent_cpu 값을 재계산해야 한다.
+ * 
+ * 지수 가중 이동평균 방식에 의해서 구할 수 있다.
+ * recent_cpu == (2 * load_avg) / (2 * load_avg + 1) * recent_cpu + nice
+ */
+	int recent_cpu;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -130,6 +158,15 @@ struct thread { // TCB 영역의 구성을 의미한다.
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
+/** 1
+ * thread_mlfqs가 true일 때는 advanced scheduler를,
+ * false일 때는 기존의 priority scheduler를 사용하도록 구현한다.
+ * 
+ * 4BSD 스케줄러는 multilevel feedback queue scheduler의 구성을 갖는다.
+ * 이러한 방식에서 ready queue가 여러개 존재하고, 각각의 ready queue는 서로 다른 priority를 갖는다.
+ * 실행중이던 thread가 실행을 끝내면, 스케줄러는 가장 priority가 높음 ready queue에서부터 하나의 thread를 꺼내와 실행시키고,
+ * 해당 ready queue에 여러 thread가 잇는 경우 'round-robin' 방식으로 thread들을 실행시킨다. (우선순위 없이 FIFO)
+ */
 extern bool thread_mlfqs;
 
 void thread_init (void);

@@ -11,6 +11,11 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+/** 1
+ * thread.c에서 fp 연산을 할 수 있도록 fixed_point.h 파일을 include한다.
+ */
+#include "threads/fixed_point.h"
+
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -60,6 +65,26 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
+
+/** 1
+ * for advanced scheduler
+ * 최근 1분 동안 수행 가능한 thread의 평균 개수를 나타내며, 실수 값을 가진다. <= 이 역시도 recent_cpu와 값이 지수 가중 평균이동으로 구한다.
+ * priority, recent_cpu 값은 각 thread 별로 그 값을 가지는 반면 load_avg 는 system-wide 값으로 시스템 내에서 동일한 값을 가진다.
+ * 매 1초마다 load_avg 값을 재계산한다.
+ * LOAD_AVG_DEFAULT == 0
+ * load_avg = (59/60) * load_avg + (1/60) * ready_threads이다.
+ * 이때, ready_threads값은 업데이트 시점에 ready(running + ready to run) 상태의 스레드의 개수를 나타낸다.
+ * 
+ * 이 값이 크면 recent_cpu 값은 천천히 감소(priority는 천천히 증가)하고,
+ * 이 값이 작으면 recent_cpu 값은 빠르게 감소(priority는 빠르게 증가)한다.
+ * 
+ * 왜냐하면, 수행 가능한 thread의 평균 개수가 많을 때(load_avg 값이 클때)는 
+ * 모든 thread가 골고루 CPU time을 배분받을 수 있도록 이미 사용한 thread의 priority가 천천히 증가해야 한다.
+ * 
+ * 반대로, 수행 가능한 thread의 평균 개수가 적을 때(load_avg 값이 작을때)는
+ * 조금 더 빠르게 증가해도 모든 thread가 골고루 CPU time을 배분받을 수 있기 때문이다.
+ */
+int load_avg;
 
 static void kernel_thread (thread_func *, void *aux);
 
@@ -132,10 +157,12 @@ thread_start (void) {
 	/* Create the idle thread. */
 	struct semaphore idle_started;
 	sema_init (&idle_started, 0);
-	/**
+	/** 1
 	 * thread_create하는 순간 idle thread가 생성되고, 동시에 idle 함수가 실행된다.
 	 */
 	thread_create ("idle", PRI_MIN, idle, &idle_started);
+
+  load_avg = LOAD_AVG_DEFAULT; // idle thread가 start하는 순간 load_avg도 초기화한다.
 
 	/* Start preemptive thread scheduling. */
 	intr_enable ();
@@ -468,10 +495,16 @@ init_thread (struct thread *t, const char *name, int priority) {
  */
 	t->init_priority = priority;
   t->wait_on_lock = NULL;
-  list_init (&t->donations);
+/** 1
+ * advanced scheduler를 위해 추가한 변수 초기화
+ */
+	t->nice = NICE_DEFAULT;
+  t->recent_cpu = RECENT_CPU_DEFAULT;
 
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+  list_init (&t->donations); // thread의 donations list를 초기화한다.
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

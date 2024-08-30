@@ -223,8 +223,12 @@ parse_options (char **argv) {
 #endif
 		else if (!strcmp (name, "-rs"))
 			random_init (atoi (value));
+			/** 1
+			 * pintos 에서는 일반 priority scheduler와 advanced scheduler 중 무엇을 적용할지 사용자가 선택하도록 요구한다.
+			 * pintos를 실행시킬 때, 'mlfqs' 옵션을 넣어주면 advanced scheduler를 적용하여 kernel을 작동시킨다.
+			 */
 		else if (!strcmp (name, "-mlfqs"))
-			thread_mlfqs = true;
+			thread_mlfqs = true; // thread.h에 extern bool로 정의되어있다.
 #ifdef USERPROG
 		else if (!strcmp (name, "-ul"))
 			user_page_limit = atoi (value);
