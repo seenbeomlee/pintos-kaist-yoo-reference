@@ -40,6 +40,9 @@ static struct list sleep_list;
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+/** project1-Advanced Scheduler */
+static struct list all_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -142,6 +145,7 @@ thread_init (void) {
 	list_init (&ready_list);
 	list_init (&destruction_req);
 	list_init (&sleep_list); // 1 sleep_list를 추가하였으므로, 초기화한다.
+	list_init (&all_list);
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -844,4 +848,97 @@ refresh_priority (void)
     if (front->priority > cur->priority) // 만일, front->priority > cur->priority라면,
       cur->priority = front->priority; // priority donation을 수행한다.
   } 
+}
+
+/********** ********** ********** project 1 : advanced scheduler ********** ********** **********/
+/********** ********** ********** project 1 : advanced scheduler ********** ********** **********/
+/********** ********** ********** project 1 : advanced scheduler ********** ********** **********/
+/** 1
+ * 
+ * 4BSD scheduler priority를 0 (PRI_MIN)부터 64(PRI_MAX)의 64개의 값으로 나눈다.
+ * 각 priority 별로 ready queue가 존재하므로 64개의 ready queue가 존재하며,
+ * priority 값이 커질수록 우선순위가 높아짐(먼저 실행됨)을 의미한다.
+ * thread의 priority는 thread 생성 시에 초기화되고, 4 ticks의 시간이 흐를 때마다 모든 thread의 priority가 재계산된다.
+ * priority의 값을 계산하는 식은 아래와 같다.
+ * priority = PRI_MAX - (recent_cpu / 4) - (nice * 2)
+ * 
+ * recent_cpu 값은 이 thread가 최근에 cpu를 얼마나 사용하였는지를 나타내는 값으로, thread가 최근에 사용한 cpu 양이 많을수록 큰 값을 가진다.
+ * 이는 오래된 thread 일수록 우선순위를 높게 가져서(recent_cpu 값이 작아짐) 모든 thread들이 골고루 실행될 수 있게 한다.
+ * priority는 정수값을 가져야 하므로, 계산 시 소수점은 버림한다.
+ */
+
+/**
+ * mlfqs_calculate_priority () 함수는 특정 thread의 priority를 계산하는 함수이다.
+ * idle_thread의 priority는 고정이므로 제외하고, fixed_point.h 에서 만든 fp 연산 함수를 사용하여 priority를 구한다.
+ * 계산 결과의 소수부분은 버림하고 정수의 priority로 설정한다.
+ */
+void
+mlfqs_calculate_priority (struct thread *t)
+{
+  if (t == idle_thread) 
+    return ;
+  t->priority = fp_to_int (add_mixed (div_mixed (t->recent_cpu, -4), PRI_MAX - t->nice * 2));
+}
+
+void
+mlfqs_calculate_recent_cpu (struct thread *t)
+{
+  if (t == idle_thread)
+    return ;
+  t->recent_cpu = add_mixed (mult_fp (div_fp (mult_mixed (load_avg, 2), add_mixed (mult_mixed (load_avg, 2), 1)), t->recent_cpu), t->nice);
+}
+
+/** 1
+ * load_avg 값을 계산하는 함수이다.
+ * load_avg 값은 thread 고유의 값이 아니라 system wide한 값이기 때문에, idle_thread가 실행되는 경우에도 계산한다.
+ * ready_threads는 현재 시점에서 실행 가능한 thread의 수를 나타내므로,
+ * ready_list에 들어 있는 thread의 숫자에 현재 running thread 1개를 더한다.
+ * (이때, idle thread는 실행 가능한 thread에 포함시키지 않는다.)
+ */
+void 
+mlfqs_calculate_load_avg (void) 
+{
+  int ready_threads;
+  
+  if (thread_current () == idle_thread)
+    ready_threads = list_size (&ready_list);
+  else
+    ready_threads = list_size (&ready_list) + 1;
+
+  load_avg = add_fp (mult_fp (div_fp (int_to_fp (59), int_to_fp (60)), load_avg), 
+                     mult_mixed (div_fp (int_to_fp (1), int_to_fp (60)), ready_threads));
+}
+
+/** 1
+ * 1. 1 tick 마다 running thread의 recent_cpu 값 + 1
+ * 2. 4 ticks 마다 모든 thread의 priority 재계산
+ * 3. 1초 마다 모든 thread의 recent_cpu 값과 load_avg 값 재계산
+ */
+void
+mlfqs_increment_recent_cpu (void)
+{
+  if (thread_current () != idle_thread)
+    thread_current ()->recent_cpu = add_mixed (thread_current ()->recent_cpu, 1);
+}
+
+void
+mlfqs_recalculate_recent_cpu (void)
+{
+  struct list_elem *e;
+
+  for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e)) {
+    struct thread *t = list_entry (e, struct thread, all_elem);
+    mlfqs_calculate_recent_cpu (t);
+  }
+}
+
+void
+mlfqs_recalculate_priority (void)
+{
+  struct list_elem *e;
+
+  for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e)) {
+    struct thread *t = list_entry (e, struct thread, all_elem);
+    mlfqs_calculate_priority (t);
+  }
 }

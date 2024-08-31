@@ -140,6 +140,7 @@ struct thread { // TCB 영역의 구성을 의미한다.
  * recent_cpu == (2 * load_avg) / (2 * load_avg + 1) * recent_cpu + nice
  */
 	int recent_cpu;
+	struct list_elem all_elem;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -217,5 +218,22 @@ bool thread_compare_donate_priority (const struct list_elem *l, const struct lis
 void donate_priority (void);
 void remove_with_lock (struct lock *lock);
 void refresh_priority (void);
+
+/********** ********** ********** project 1 : advanced scheduler ********** ********** **********/
+/********** ********** ********** project 1 : advanced scheduler ********** ********** **********/
+/********** ********** ********** project 1 : advanced scheduler ********** ********** **********/
+void mlfqs_calculate_priority (struct thread *t);
+void mlfqs_calculate_recent_cpu (struct thread *t);
+void mlfqs_calculate_load_avg (void);
+
+/** 1
+ * 1. 1 tick 마다 running thread의 recent_cpu 값 + 1
+ * 2. 4 ticks 마다 모든 thread의 priority 재계산
+ * 3. 1초 마다 모든 thread의 recent_cpu 값과 load_avg 값 재계산
+ * 각 함수를 해당하는 시간 주기마다 실행되도록 timer_interrupt ()를 바꾸어주면 된다.
+ */
+void mlfqs_increment_recent_cpu (void); // 현재 thread의 recent_cpu 값을 1 증가시키는 함수이다.
+void mlfqs_recalculate_recent_cpu (void); // 모든 thread의 recent_cpu를 재계산하는 함수이다.
+void mlfqs_recalculate_priority (void); // 모든 thread의 priority를 재계산하는 함수이다.
 
 #endif /* threads/thread.h */
