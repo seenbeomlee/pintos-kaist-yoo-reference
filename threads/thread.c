@@ -342,6 +342,9 @@ thread_exit (void) {
 #ifdef USERPROG
 	process_exit ();
 #endif
+	/** project1-Advanced Scheduler */
+	if (thread_mlfqs)
+		list_remove(&thread_current()->all_elem);
 
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
@@ -529,21 +532,23 @@ init_thread (struct thread *t, const char *name, int priority) {
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 
-/** 1
- * priority donation을 위해 추가한 변수 초기화
- */
-	t->init_priority = priority;
-  t->wait_on_lock = NULL;
-/** 1
- * advanced scheduler를 위해 추가한 변수 초기화
- */
-	t->nice = NICE_DEFAULT;
-  t->recent_cpu = RECENT_CPU_DEFAULT;
+	/** project1-Advanced Scheduler */
+	if (thread_mlfqs) {
+		mlfqs_calculate_priority (t);
+		list_push_back(&all_list, &t->all_elem);
+	} else {
+		t->priority = priority;
+	}
 
-	t->priority = priority;
+	t->wait_on_lock = NULL;
+	list_init(&t->donations); // thread의 donations list를 초기화한다.
+
 	t->magic = THREAD_MAGIC;
 
-  list_init (&t->donations); // thread의 donations list를 초기화한다.
+	/** #Advanced Scheduler */
+	t->init_priority = t->priority;
+	t->nice = NICE_DEFAULT;
+	t->recent_cpu = RECENT_CPU_DEFAULT;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
