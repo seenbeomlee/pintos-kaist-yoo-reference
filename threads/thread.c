@@ -397,31 +397,59 @@ thread_get_priority (void) {
 	return thread_current ()->priority;
 }
 
+/** 1
+ * 각 값들을 변경할 시에는 interrupt의 방해를 받지 않도록 interrupt를 비활성화 해야 한다.
+ * 1. void thread_set_nice (int);
+ * 2. int thread_get_nice (void);
+ * 3. int thread_get_load_avg (void);
+ * 4. thread_get_recent_cpu (void);
+ */
+
 /* Sets the current thread's nice value to NICE. */
 void
 thread_set_nice (int nice UNUSED) {
 	/* TODO: Your implementation goes here */
+	// 현재 스레드의 nice 값을 새 값으로 설정
+  enum intr_level old_level = intr_disable ();
+  thread_current () -> nice = nice;
+  mlfqs_calculate_priority (thread_current ());
+  thread_test_preemption ();
+  intr_set_level (old_level);
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) {
 	/* TODO: Your implementation goes here */
-	return 0;
+	// 현재 스레드의 nice 값을 반환
+  enum intr_level old_level = intr_disable ();
+  int nice = thread_current () -> nice;
+  intr_set_level (old_level);
+  return nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) {
 	/* TODO: Your implementation goes here */
-	return 0;
+	// 현재 시스템의 load_avg * 100 값을 반환
+  enum intr_level old_level = intr_disable ();
+	// load avg의 getter는 pintos document의 지시대로 100을 곱한 후 정수형으로 만들고 반올림한다.
+  int load_avg_value = fp_to_int_round (mult_mixed (load_avg, 100));
+  intr_set_level (old_level);
+  return load_avg_value;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) {
 	/* TODO: Your implementation goes here */
-	return 0;
+	// 현재 스레드의 recent_cpu * 100 값을 반환
+  enum intr_level old_level = intr_disable ();
+	// recent cpu의 getter는 pintos document의 지시대로 100을 곱한 후 정수형으로 만들고 반올림한다.
+  int recent_cpu = fp_to_int_round (mult_mixed (thread_current () -> recent_cpu, 100));
+  intr_set_level (old_level);
+  return recent_cpu;
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
