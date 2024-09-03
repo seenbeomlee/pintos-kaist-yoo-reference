@@ -218,6 +218,16 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
+/** 1
+ * mlfqs 스케줄러는 시간에 따라 priority가 재조정되므로 priority donation을 사용하지 않는다.
+ * 따라서, lock_acquire에서 구현해주었던 priority donation을 mlfqs에서는 비활성화 시켜주어야 한다.
+ */
+  if (thread_mlfqs) {
+    sema_down (&lock->semaphore);
+    lock->holder = thread_current ();
+    return ;
+  }
+
   struct thread *cur = thread_current ();
   if (lock->holder) { // lock을 점유하고 있는 thread가 있다면,
     cur->wait_on_lock = lock; // lock_acquire()을 요청한 현재 thread의 wait_on_lock에 lock을 추가하고, 
@@ -268,6 +278,16 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock)); // lock이 semaphore와 다른 점은, lock_release()는 lock_holder만이 호출할 수 있다는 것이다.
+
+/** 1
+ * mlfqs 스케줄러는 시간에 따라 priority가 재조정되므로 priority donation을 사용하지 않는다.
+ * 따라서, lock_release에서 구현해주었던 priority donation을 mlfqs에서는 비활성화 시켜주어야 한다.
+ */
+  if (thread_mlfqs) {
+		lock->holder = NULL;
+    sema_up (&lock->semaphore);
+    return ;
+  }
 
   remove_with_lock (lock);
   refresh_priority ();

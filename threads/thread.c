@@ -370,6 +370,13 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
+/** 1
+ * mlfqs scheduler 에서는 priority를 임의로 변경할 수 없기 때문에,
+ * thread_set_priority() 함수 역시 비활성화 시켜야 한다.
+ */
+	if (thread_mlfqs)
+		return;
+
 	thread_current ()->init_priority = new_priority;
 
 	/** 1
