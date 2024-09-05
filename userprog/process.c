@@ -181,13 +181,20 @@ error:
  * load ()가 성공적으로 이루어졌을 때, argument_stack 함수를 이용하여, user stack에 인자들을 저장한다.
  */
 int
-process_exec (void *f_name) {
-	char *file_name = f_name;
+process_exec (void *f_name) { 
+// 유저가 입력한 명령어를 수행하도록 프로그램을 메모리에 적재하고 실행하는 함수. 
+// 여기에 파일 네임 인자로 받아서 저장(문자열) => 근데 실행 프로그램 파일과 옵션이 분리되지 않은 상황.
+	char *file_name = f_name; // f_name은 문자열인데 위에서 (void *)로 넘겨받음! -> 문자열로 인식하기 위해서 char* 로 변환해줘야한다.
 	bool success;
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
 	 * it stores the execution information to the member. */
+	/** 2
+	 * _if에는 intr_frame 내 구조체 멤버에 필요한 정보를 담는다. 
+	 * 여기서 intr_frame은 인터럽트 스택 프레임이다. 
+	 * 즉, 인터럽트 프레임은 인터럽트와 같은 요청이 들어와서 기존까지 실행 중이던 context(레지스터 값 포함)를 스택에 저장하기 위한 구조체이다!
+	 */
 	struct intr_frame _if;
 	_if.ds = _if.es = _if.ss = SEL_UDSEG;
 	_if.cs = SEL_UCSEG;
@@ -195,6 +202,8 @@ process_exec (void *f_name) {
 
 	/* We first kill the current context */
 	process_cleanup ();
+// 새로운 실행 파일을 현재 스레드에 담기 전에 먼저 현재 process에 담긴 context를 지워준다.
+// 지운다? => 현재 프로세스에 할당된 page directory를 지운다는 뜻.
 
 /** project2-Command Line Parsing */
 	char *ptr, *arg;
@@ -207,12 +216,21 @@ process_exec (void *f_name) {
 	/* And then load the binary */
 	// load() 함수는 실행할 프로그램의 binary 파일을 메모리에 올리는 역할을 한다.
 	success = load (file_name, &_if);
+// file_name, _if를 현재 프로세스에 load 한다.
+// success는 bool type이니까 load에 성공하면 1, 실패하면 0 반환.
+// 이때 file_name: f_name의 첫 문자열을 parsing하여 넘겨줘야 한다!
 
 	/** project2-Command Line Parsing */
 	argument_stack(arg_list, arg_cnt, &_if);
 
-	/* If load failed, quit. */
+	/** 2
+	 * 어라, 근데 page를 할당해준 적이 없는데 왜 free를 하는 거지? 
+	 * => palloc()은 load() 함수 내에서 file_name을 메모리에 올리는 과정에서 page allocation을 해준다. 
+	 * 이때, 페이지를 할당해주는 걸 임시로 해주는 것.
+	 * file_name: 프로그램 파일 받기 위해 만든 임시변수. 따라서 load 끝나면 메모리 반환.
+	 */
 	palloc_free_page (file_name);
+	/* If load failed, quit. */
 	if (!success)
 		return -1;
 
@@ -224,7 +242,7 @@ process_exec (void *f_name) {
 	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true); // 0x47480000	
 
 	/* Start switched process. */
-	do_iret (&_if);
+	do_iret (&_if); // 만약 load가 실행됐다면 context switching을 진행한다.
 	NOT_REACHED ();
 }
 
@@ -529,7 +547,11 @@ void argument_stack(char **argv, int argc, struct intr_frame *if_) {
 	int argv_len;
 
 	for (int i = argc - 1; i >= 0; i--) { // argv 배열을 역순으로 stack에 넣는다.
-		argv_len = strlen(argv[i]) + 1; // 문자열의 길이에 1을 더한 만큼의 공간을 할당하여 문자열을 복사한다.
+	/** 2
+	 * 문자열의 길이에 1을 더한 만큼의 공간을 할당하여 문자열을 복사한다.
+	 * strlen은 NULL(sentinel)을 읽지 않으니, +1을 해주는 것이다.
+	 */
+		argv_len = strlen(argv[i]) + 1;
 		if_->rsp -= argv_len;
 		memcpy(if_->rsp, argv[i], argv_len); // 문자열의 길이에 1을 더한 만큼의 공간을 할당하여 문자열을 복사한다.
 		arg_addr[i] = if_->rsp;
@@ -545,6 +567,7 @@ void argument_stack(char **argv, int argc, struct intr_frame *if_) {
 		if_->rsp -= 8;
 		memcpy(if_->rsp, &arg_addr[i], sizeof(char *));
 	}
+	// fake return address를 설정한다.
 	if_->rsp = if_->rsp - 8;
 	memset(if_->rsp, 0, sizeof(void *)); // 마지막으로 NULL 포인터를 넣어 인자들의 끝을 표시한다.
 
