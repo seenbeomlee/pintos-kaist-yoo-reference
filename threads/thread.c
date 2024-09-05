@@ -813,7 +813,10 @@ thread_test_preemption (void)
     if (!list_empty (&ready_list) && 
     thread_current ()->priority < 
     list_entry (list_front (&ready_list), struct thread, elem)->priority)
-        thread_yield (); // CPU의 점유권을 넘겨준다.
+				if (intr_context())
+					intr_yield_on_return();
+        else
+					thread_yield (); // CPU의 점유권을 넘겨준다.
 }
 
 /** 1
