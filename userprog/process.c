@@ -160,6 +160,18 @@ error:
 
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
+/** 2
+ * 유저가 입력한 명령어를 수행할 수 있도록, 프로그램을 메모리에 적재하고 실행하는 함수이다.
+ * filename을 f_name이라는 인자로 받아서 file_name에 저장한다.
+ * 초기에 file_name은 실행 프로그램 파일명과 옵션이 분리되지 않은 상황(통 문자열)이다.
+ * thread의 이름을 실행 파일명으로 저장하기 위해 실행 프로그램 파일명만 분리하기 위해 parsing해야 한다.
+ * 실행파일명은 cmd line 안에서 첫번째 공백 전의 단어에 해당한다.
+ * 다른 인자들 역시 프로세스를 실행하는데 필요하므로, 함께 user stack에 담아줘야한다.
+ * arg_list라는 배열을 만들어서, 각 인자의 char*을 담아준다.
+ * 실행 프로그램 파일명은 arg_list[0]에 들어간다.
+ * 2번째 인자 이후로는 arg_list[i]에 들어간다.
+ * load ()가 성공적으로 이루어졌을 때, argument_stack 함수를 이용하여, user stack에 인자들을 저장한다.
+ */
 int
 process_exec (void *f_name) {
 	char *file_name = f_name;
@@ -176,8 +188,20 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
+/** project2-Command Line Parsing */
+	char *ptr, *arg;
+	int arg_cnt = 0;
+	char *arg_list[32];
+// 파싱을 통해 제대로 된 파일 이름을 구하도록 정정한다.
+	for (arg = strtok_r(file_name, " ", &ptr); arg != NULL; arg = strtok_r(NULL, " ", &ptr))
+		arg_list[arg_cnt++] = arg;
+
 	/* And then load the binary */
+	// load() 함수는 실행할 프로그램의 binary 파일을 메모리에 올리는 역할을 한다.
 	success = load (file_name, &_if);
+
+	/** project2-Command Line Parsing */
+	argument_stack(arg_list, arg_cnt, &_if);
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -330,6 +354,8 @@ load (const char *file_name, struct intr_frame *if_) {
 	int i;
 
 	/* Allocate and activate page directory. */
+	// 각 프로세스가 실행이 될 때, 각 프로세스에 해당하는 VM(virtual memory)이 만들어져야 하므로,
+	// 이를 위해 페이지 테이블 엔트리를 생성하는 과정이 우선된다.
 	t->pml4 = pml4_create ();
 	if (t->pml4 == NULL)
 		goto done;
@@ -379,6 +405,9 @@ load (const char *file_name, struct intr_frame *if_) {
 			case PT_SHLIB:
 				goto done;
 			case PT_LOAD:
+// 그 뒤, 파일을 실제로 VM에 올리는 과정이 진행된다. 
+// 파일이 제대로 된 ELF 인지 검사하는 과정이 동반되며, 
+// 세그먼트 단위로 PT_LOAD의 헤더 타입을 가진 부분을 하나씩 메모리로 올리는 작업을 진행한다.
 				if (validate_segment (&phdr, file)) {
 					bool writable = (phdr.p_flags & PF_W) != 0;
 					uint64_t file_page = phdr.p_offset & ~PGMASK;
@@ -408,10 +437,12 @@ load (const char *file_name, struct intr_frame *if_) {
 	}
 
 	/* Set up stack. */
+	// 전부 메모리로 올린 뒤에 스택을 만드는 과정이 실행된다.
 	if (!setup_stack (if_))
 		goto done;
 
 	/* Start address. */
+	// 어떤 명령부터 실행되는지를 가리키는, 즉 entry point 역할의 rip를 설정하고, 열었던 실행 파일을 닫는 것으로 load()가 끝난다.
 	if_->rip = ehdr.e_entry;
 
 	/* TODO: Your code goes here.
@@ -468,6 +499,36 @@ validate_segment (const struct Phdr *phdr, struct file *file) {
 
 	/* It's okay. */
 	return true;
+}
+
+/** project2-Command Line Parsing */
+// 유저 스택에 파싱된 토큰을 저장하는 함수
+void argument_stack(char **argv, int argc, struct intr_frame *if_) {
+	char *arg_addr[100]; // 문자열 주소를 저장하는 배열
+	int argv_len;
+
+	for (int i = argc - 1; i >= 0; i--) { // argv 배열을 역순으로 stack에 넣는다.
+		argv_len = strlen(argv[i]) + 1; // 문자열의 길이에 1을 더한 만큼의 공간을 할당하여 문자열을 복사한다.
+		if_->rsp -= argv_len;
+		memcpy(if_->rsp, argv[i], argv_len); // 문자열의 길이에 1을 더한 만큼의 공간을 할당하여 문자열을 복사한다.
+		arg_addr[i] = if_->rsp;
+	}
+
+	while (if_->rsp % 8) // stack을 8 바이트로 정렬한다.
+		*(uint8_t *)(--if_->rsp) = 0;
+
+	if_->rsp -= 8;
+	memset(if_->rsp, 0, sizeof(char *));
+
+	for (int i = argc - 1; i >= 0; i--) { // arg_addr 배열의 주소를 stack에 넣는다.
+		if_->rsp -= 8;
+		memcpy(if_->rsp, &arg_addr[i], sizeof(char *));
+	}
+	if_->rsp = if_->rsp - 8;
+	memset(if_->rsp, 0, sizeof(void *)); // 마지막으로 NULL 포인터를 넣어 인자들의 끝을 표시한다.
+
+	if_->R.rdi = argc; // &rdi 레지스터에는 인자의 개수가 저장된다.
+	if_->R.rsi = if_->rsp + 8; // %rsi 레지스터에는 인자들의 시작 주소가 저장된다.
 }
 
 #ifndef VM
