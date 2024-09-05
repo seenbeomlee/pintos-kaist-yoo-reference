@@ -50,6 +50,14 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+	/** 2
+	 * 	Project2: for Test Case - 직접 프로그램을 실행할 때에는 이 함수를 사용하지 않지만 make check에서
+	 *  이 함수를 통해 process_create를 실행하기 때문에 이 부분을 수정해주지 않으면 Test Case의 Thread_name이
+	 *  커맨드 라인 전체로 바뀌게 되어 Pass할 수 없다.
+	 */
+	char *ptr;
+	strtok_r(file_name, " ", &ptr);
+
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
@@ -208,6 +216,13 @@ process_exec (void *f_name) {
 	if (!success)
 		return -1;
 
+	/** 2
+	 * argument parsing test를 위한 무한 루프 추가
+	 * 결과를 확인하기 위해 hex_dump()함수를 사용한다.
+	 * 이 함수는 메모리의 내용을 16진수 형식으로 출겨해서 stack에 저장된 값을 확인할 수 있다.
+	 */
+	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true); // 0x47480000	
+
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
@@ -228,6 +243,12 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	/** 2
+	 * argument parsing test를 위한 무한 루프 추가
+	 * 핀토스는 user process를 생성한 후 프로세스 종료를 대기해야 하는데, 자식 프로세스가 종료될 때까지 대기한다.
+	 * 현재는 process_wait()를 구현하지 않았으므로, 일단 무한 대기하도록 임의 설정한다.
+	 */
+	while (1) {}
 	return -1;
 }
 
