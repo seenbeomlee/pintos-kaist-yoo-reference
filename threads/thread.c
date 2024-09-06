@@ -241,6 +241,22 @@ thread_create (const char *name, int priority,
 	init_thread (t, name, priority);
 	tid = t->tid = allocate_tid ();
 
+	// project2 : file descriptor
+	#ifdef USERPROG
+	t->fdt = palloc_get_multiple(PAL_ZERO, FDT_PAGES); // thread_create() 시에 동적할당 되도록 한다.
+	if (t->fdt == NULL) // 동적할당에 실패했을 경우
+		return TID_ERROR;
+
+	t->exit_status = 0; // exit_status 초기화
+
+	t->fd_idx = 3; // 항상 3부터 할당되고, 비어있는 인덱스 중에서 작은 인덱스에 할당된다.
+	t->fdt[0] = 0; // stdin 예약된 자리 (dummy)
+	t->fdt[1] = 1; // stdout 예약된 자리 (dummy)
+	t->fdt[2] = 2; // stderr 예약된 자리 (dummy)
+
+	list_push_back(&thread_current()->child_list, &t->child_elem);
+#endif
+
 	/* Call the kernel_thread if it scheduled. 
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
 	t->tf.rip = (uintptr_t) kernel_thread;

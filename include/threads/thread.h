@@ -9,6 +9,8 @@
 #include "vm/vm.h"
 #endif
 
+#define FDT_PAGES 3 // test `multi-oom` 테스트용
+#define FDCOUNT_LIMIT FDT_PAGES * (1 << 9) // 엔트리가 512개(2의 9승)) 인 이유: 페이지 크기 4kb (2의 12승) / 파일 포인터 8byte (2의 3승))
 
 /* States in a thread's life cycle. */
 enum thread_status {
@@ -142,10 +144,26 @@ struct thread { // TCB 영역의 구성을 의미한다.
 	int recent_cpu;
 	struct list_elem all_elem;
 
-/** 2
+/** 2 system call
  * exit(), wait() 구현에 사용될 exit_status를 추가.
  */
 	int exit_status;
+
+/** 2 file descriptor
+ * 각 thread는 고유한 file descriptor table을 가지고 있어야 한다.
+ * thread에 파일 테이블을 struct file *fdt[128]과 같이 포인터들을 담은 배열 형태로 선언하면 thread struct의 크기가 너무 커지게 된다.
+ * 따라서, 이를 방지하기 위해 thread struct에는 파일 테이블의 시작 주소만 가지고 있을 수 있게끔
+ * struct file **fdt 형태로 선언해두고, thread가 생성될 때 파일 테이블을 동적으로 할당받게(palloc) 한다.
+ */
+	int fd_idx;              // 파일 디스크립터 인덱스
+	struct file **fdt;       // 파일 디스크립터 테이블
+	/** 2
+	 * File descriptor
+	 * [0] == standard input
+	 * [1] == standard output
+	 * [2] == standard error
+	 * 따라서, 파이 디스크립터는 항상 3번부터 할당이 된다.
+	 */
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */

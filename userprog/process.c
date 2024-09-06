@@ -278,6 +278,18 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
+	for (int fd = 0; fd < curr->fd_idx; fd++)  // FDT 비우기
+		close(fd);
+
+	file_close(curr->runn_file);  // 현재 프로세스가 실행중인 파일 종료
+
+	palloc_free_multiple(curr->fdt, FDT_PAGES); // 파일 디스크립터 동적 할당 제거
+
+	process_cleanup();
+
+	sema_up(&curr->wait_sema);  // 자식 프로세스가 종료될 때까지 대기하는 부모에게 자식 프로세스가 정상적으로 종료되었다고 signal
+
+	sema_down(&curr->exit_sema);  // 이후에는 부모 프로세스가 종료될 떄까지 대기한다.
 
 	process_cleanup ();
 }
@@ -573,6 +585,49 @@ void argument_stack(char **argv, int argc, struct intr_frame *if_) {
 
 	if_->R.rdi = argc; // &rdi 레지스터에는 인자의 개수가 저장된다.
 	if_->R.rsi = if_->rsp + 8; // %rsi 레지스터에는 인자들의 시작 주소가 저장된다.
+}
+
+/** 2
+ * 현재 thread fdt에 file을 추가한다.
+ * 파일이 추가된 위치의 index를 반환한다.
+ */
+int process_add_file(struct file *f) {
+	struct thread *curr = thread_current();
+	struct file **fdt = curr->fdt;
+
+	if (curr->fd_idx >= FDCOUNT_LIMIT) // fdt가 꽉 찼을 경우에는 error를 return한다.
+		return -1;
+
+	fdt[curr->fd_idx++] = f;
+
+	return curr->fd_idx - 1;
+}
+
+/** 2
+ * 현재 thread의 fd번째 파일 정보 얻기
+ */
+struct file *process_get_file(int fd) {
+	struct thread *curr = thread_current();
+
+	if (fd >= FDCOUNT_LIMIT)
+		return NULL;
+
+	return curr->fdt[fd];
+}
+
+/** 2
+ * 현재 thread의 fdt에서 파일 삭제
+ * 삭제된 곳은 NULL로 초기화해야한다.
+ * 왜냐하면, 향후 재할당되는데 내용물이 채워져 있으면 보안상의 문제가 존재하기 때문이다.
+ */
+int process_close_file(int fd) {
+	struct thread *curr = thread_current();
+
+	if (fd >= FDCOUNT_LIMIT)
+		return -1;
+
+	curr->fdt[fd] = NULL;
+	return 0;
 }
 
 #ifndef VM

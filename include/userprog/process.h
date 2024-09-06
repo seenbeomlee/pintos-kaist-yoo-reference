@@ -15,4 +15,12 @@ void process_activate (struct thread *next);
  * char **argv로 받은 문자열 배열과 int argc로 받은 인자 개수를 처리한다.
  */
 void argument_stack(char **argv, int argc, struct intr_frame *if_);
+
+/** 2
+ * file descriptor functions
+ */
+int process_add_file(struct file *f);
+struct file *process_get_file(int fd);
+int process_close_file(int fd);
+
 #endif /* userprog/process.h */
