@@ -140,6 +140,13 @@ page_fault (struct intr_frame *f) {
 	write = (f->error_code & PF_W) != 0;
 	user = (f->error_code & PF_U) != 0;
 
+	/** 2
+	 * create-bad-ptr, read-bad-ptr 등 15개의 test case에서 Page fault 발생
+	 * Page fault 에러 메시지 출력으로 인해 test case가 fail 처리 됨
+	 * 에러 메시지 출력을 방지하기 위해 exit(-1) 을 호출 하도록 수정
+	 */
+	exit(-1);
+
 #ifdef VM
 	/* For project 3 and later. */
 	if (vm_try_handle_fault (f, fault_addr, user, write, not_present))

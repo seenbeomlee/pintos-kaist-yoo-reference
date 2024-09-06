@@ -8,6 +8,12 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 
+#include "threads/mmu.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
+#include "threads/palloc.h"
+#include "userprog/process.h"
+
 struct lock filesys_lock;  // 파일 읽기/쓰기 용 lock
 
 void syscall_entry (void);
@@ -154,4 +160,116 @@ bool create (const char *file, unsigned initial_size) {
 bool remove (const char *file) {
 	check_address(file);
 	return filesys_remove(file);
+}
+
+int open(const char *file) {
+	check_address(file);
+	struct file *newfile = filesys_open(file);
+
+	if (newfile == NULL)
+		return -1;
+
+	int fd = process_add_file(newfile);
+
+	if (fd == -1)
+		file_close(newfile);
+
+	return fd;
+}
+
+int filesize(int fd) {
+	struct file *file = process_get_file(fd);
+
+	if (file == NULL)
+		return -1;
+
+	return file_length(file);
+}
+
+int read(int fd, void *buffer, unsigned length) {
+	check_address(buffer);
+
+	if (fd == 0) {  // 0(stdin) -> keyboard(standard input)로 직접 입력
+		int i = 0;  // 쓰레기 값 return 방지
+		char c;
+		unsigned char *buf = buffer;
+
+		for (; i < length; i++) {
+			c = input_getc();
+			*buf++ = c;
+			if (c == '\0')
+				break;
+		}
+
+		return i; // i == length
+	}
+	// 그 외의 경우
+	if (fd < 3)  // stdout, stderr를 읽으려고 할 경우 & fd가 음수일 경우
+		return -1;
+
+	struct file *file = process_get_file(fd);
+	off_t bytes = -1;
+
+	if (file == NULL)  // 파일이 비어있을 경우
+		return -1;
+
+	lock_acquire(&filesys_lock);
+	bytes = file_read(file, buffer, length);
+	lock_release(&filesys_lock);
+
+	return bytes;
+}
+
+int write(int fd, const void *buffer, unsigned length) {
+	check_address(buffer);
+
+	off_t bytes = -1;
+
+	if (fd <= 0)  // stdin에 쓰려고 할 경우 & fd 음수일 경우
+		return -1;
+
+	if (fd < 3) {  // 1(stdout) * 2(stderr) -> console로 출력
+		putbuf(buffer, length);
+		return length;
+	}
+
+	struct file *file = process_get_file(fd);
+
+	if (file == NULL)
+		return -1;
+
+	lock_acquire(&filesys_lock);
+	bytes = file_write(file, buffer, length);
+	lock_release(&filesys_lock);
+
+	return bytes;
+}
+
+void seek(int fd, unsigned position) {
+	struct file *file = process_get_file(fd);
+
+	if (fd < 3 || file == NULL)
+		return;
+
+	file_seek(file, position);
+}
+
+int tell(int fd) {
+	struct file *file = process_get_file(fd);
+
+	if (fd < 3 || file == NULL)
+		return -1;
+
+	return file_tell(file);
+}
+
+void close(int fd) {
+	struct file *file = process_get_file(fd);
+
+	if (fd < 3 || file == NULL)
+		return;
+
+	process_close_file(fd);
+
+	file_close(file);
 }
