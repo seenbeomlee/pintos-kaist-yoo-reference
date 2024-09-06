@@ -241,8 +241,10 @@ thread_create (const char *name, int priority,
 	init_thread (t, name, priority);
 	tid = t->tid = allocate_tid ();
 
-	// project2 : file descriptor
 	#ifdef USERPROG
+	/** 2
+	 * file descriptor
+ 	 */
 	t->fdt = palloc_get_multiple(PAL_ZERO, FDT_PAGES); // thread_create() 시에 동적할당 되도록 한다.
 	if (t->fdt == NULL) // 동적할당에 실패했을 경우
 		return TID_ERROR;
@@ -254,6 +256,9 @@ thread_create (const char *name, int priority,
 	t->fdt[1] = 1; // stdout 예약된 자리 (dummy)
 	t->fdt[2] = 2; // stderr 예약된 자리 (dummy)
 
+/** 2
+ * hierarchical process structure
+ */
 	list_push_back(&thread_current()->child_list, &t->child_elem);
 #endif
 
@@ -567,6 +572,18 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->recent_cpu = RECENT_CPU_DEFAULT;
 	
 	t->exit_status = 0; // for system call
+
+	/** 2
+	 * file descriptor
+	 */
+	t->runn_file = NULL;
+	/** 2
+	 * hierarchical process structure
+	 */
+	list_init(&t->child_list);
+	sema_init(&t->fork_sema, 0);
+	sema_init(&t->exit_sema, 0);
+	sema_init(&t->wait_sema, 0);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

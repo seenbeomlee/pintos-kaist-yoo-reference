@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h" /** project2 : hierarchical process structure */
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -144,12 +145,16 @@ struct thread { // TCB 영역의 구성을 의미한다.
 	int recent_cpu;
 	struct list_elem all_elem;
 
-/** 2 system call
- * exit(), wait() 구현에 사용될 exit_status를 추가.
- */
+#ifdef USERPROG
+	/* Owned by userprog/process.c. */
+	uint64_t *pml4;                     /* Page map level 4 */
+
+	/** 2 system call
+	 * exit(), wait() 구현에 사용될 exit_status를 추가.
+	 */
 	int exit_status;
 
-/** 2 file descriptor
+ /** 2 file descriptor
  * 각 thread는 고유한 file descriptor table을 가지고 있어야 한다.
  * thread에 파일 테이블을 struct file *fdt[128]과 같이 포인터들을 담은 배열 형태로 선언하면 thread struct의 크기가 너무 커지게 된다.
  * 따라서, 이를 방지하기 위해 thread struct에는 파일 테이블의 시작 주소만 가지고 있을 수 있게끔
@@ -164,10 +169,18 @@ struct thread { // TCB 영역의 구성을 의미한다.
 	 * [2] == standard error
 	 * 따라서, 파이 디스크립터는 항상 3번부터 할당이 된다.
 	 */
+	struct file *runn_file;  // 실행중인 파일
 
-#ifdef USERPROG
-	/* Owned by userprog/process.c. */
-	uint64_t *pml4;                     /* Page map level 4 */
+	/** 2
+	 * hierarchilcal process structure
+	 */
+	struct intr_frame parent_if;  // 부모 프로세스 if
+	struct list child_list;
+	struct list_elem child_elem;
+
+	struct semaphore fork_sema;  // fork가 완료될 때 signal
+	struct semaphore exit_sema;  // 자식 프로세스 종료 signal
+	struct semaphore wait_sema;  // exit_sema를 기다릴 때 사용
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
