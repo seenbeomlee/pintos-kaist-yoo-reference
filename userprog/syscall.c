@@ -96,3 +96,57 @@ int sys_number = f->R.rax;
 			exit(-1);
 	}
 }
+
+/** 2
+ * 주소 값이 user 영역에서 사용하는 주소 값인지 확인한다.
+ * user 영역을 벗어난 영역일 경우, process를 종료한다. (exit (-1))
+ */
+void 
+check_address (void *addr) {
+	if (is_kernel_vaddr(addr) || addr == NULL || pml4_get_page(thread_current()->pml4, addr) == NULL)
+		exit(-1);
+}
+
+void halt (void) {
+ power_off(); // 핀토스를 종료시키는 시스템 콜이다.
+}
+
+/** 2
+ * 현재 프로세스를 종료시키는 시스템 콜이다.
+ * 종료시, 프로세스 이름 : 'exit(status)'를 출력한다.
+ * 정상적으로 종료시 status는 0이 된다.
+ * status : 프로그램이 정상적으로 종료되었는지 확인한다.
+ */
+void exit( int status) {
+	struct thread *t = thread_current();
+	t->exit_status = status;
+	printf("%s: exit(%d)\n", t->name, t->exit_status); // Process Termination Message
+	thread_exit();
+}
+
+/** 2
+ * 파일을 생성하는 시스템 콜이다.
+ * 생성할 파일의 이름과 만들 파일의 사이즈를 파라미터로 받고,
+ * 디스크에 해당 이름으로 파일을 만드는 시스템 콜이다.
+ * 
+ * 성공할 경우 true, 실패할 경우 false를 리턴한다.
+ * file : 생성할 파일의 이름 및 경로 정보
+ * initial_size : 생성할 파일의 크기
+ */
+bool create (const char *file, unsigned initial_size) {
+	check_address(file);
+  return filesys_create(file, initial_size);
+}
+
+/** 2
+ * 파일을 삭제하는 시스템 콜이다.
+ * 지울 파일의 이름을 파라미터로 받고,
+ * 디스크에서 해당 이름과 같은 이름을 가진 파일을 지우는 시스템 콜이다.
+ * 
+ * file : 제거할 파일의 이름 및 경로 정보
+ * 성공할 경우 true, 실패할 경우 false를 리턴한다.
+ */
+bool remove (const char *file) {
+	check_address(file);
+	return filesys_remove(file);
+}

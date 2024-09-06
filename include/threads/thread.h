@@ -142,6 +142,11 @@ struct thread { // TCB 영역의 구성을 의미한다.
 	int recent_cpu;
 	struct list_elem all_elem;
 
+/** 2
+ * exit(), wait() 구현에 사용될 exit_status를 추가.
+ */
+	int exit_status;
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
