@@ -229,8 +229,8 @@ process_exec (void *f_name) {
   for (arg = strtok_r(file_name, " ", &ptr); arg != NULL; arg = strtok_r(NULL, " ", &ptr))
 		argv[argc++] = arg;
 
-	/* And then load the binary */
-	// load() 함수는 실행할 프로그램의 binary 파일을 메모리에 올리는 역할을 한다.
+/* And then load the binary */
+// load() 함수는 실행할 프로그램의 binary 파일을 메모리에 올리는 역할을 한다.
 	success = load (file_name, &_if);
 // file_name, _if를 현재 프로세스에 load 한다.
 // success는 bool type이니까 load에 성공하면 1, 실패하면 0 반환.
@@ -286,17 +286,14 @@ process_wait (tid_t child_tid UNUSED) {
 	// while (1) {}
 	// return -1;
 	struct thread *child = get_child_process(child_tid);
-	if (child == NULL)
+	if (child == NULL) // 자식이 아니라면 -1을 반환한다.
 		return -1;
 
-	sema_down(&child->wait_sema);  // 자식 프로세스가 종료될 때 까지 대기.
+	sema_down(&child->wait_sema);  // 자식 프로세스가 종료될 때 까지 대기한다. (process_exit에서 자식이 종료될 때 sema_up 해줄 것이다.)
+	list_remove(&child->child_elem); // 자식이 종료됨을 알리는 'wait_sema' signal을 받으면 현재 스레드(부모)의 자식 리스트에서 제거한다.
+	sema_up(&child->exit_sema);  // 자식 프로세스가 완전히 종료되고 스케줄링이 이어질 수 있도록 자식에게 signal을 보낸다.
 
-	int exit_status = child->exit_status;
-	list_remove(&child->child_elem);
-
-	sema_up(&child->exit_sema);  // 자식 프로세스가 죽을 수 있도록 signal
-
-	return exit_status;
+	return child->exit_status; // 자식의 exit_status를 반환한다.
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -464,9 +461,14 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	}
 
-   /** project2-System Call - 파일 실행 명시 및 접근 금지 설정  */
 	t->runn_file = file;
-	file_deny_write(file); /** Project 2: Denying Writes to Executables */
+	/** 2
+	 * 열려있는 파일에 쓰기를 방지한다.
+	 * 1. file_allow_write ()를 파일 안에서 호출하면 다시 쓰기가 가능해지도록 만들 수 있다.
+	 * 2. 파일을 닫아도 다시 쓰기가 가능해지게 된다. 그러므로, 프로세스의 실행 파일에 쓰기를 계속 거부하려면
+	 * 		프로세스가 돌아가는 동안에는 실행 파일이 쭉- 열려 있게끔 해야 한다.
+	 */
+	file_deny_write(file);
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -688,7 +690,7 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	struct intr_frame *f = (pg_round_up(rrsp()) - sizeof(struct intr_frame));  // 현재 쓰레드의 if_는 페이지 마지막에 붙어있다.
 	memcpy(&curr->parent_if, f, sizeof(struct intr_frame));                    // 1. 부모를 찾기 위해서 2. do_fork에 전달해주기 위해서
 
-    /* 현재 스레드를 새 스레드로 복제합니다.*/
+	/* 현재 스레드를 새 스레드로 복제합니다.*/
 	tid_t tid = thread_create(name, PRI_DEFAULT, __do_fork, curr);
 
 	if (tid == TID_ERROR)
@@ -696,12 +698,16 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 
 	struct thread *child = get_child_process(tid);
 
-	sema_down(&child->fork_sema);  // 생성만 해놓고 자식 프로세스가 __do_fork에서 fork_sema를 sema_up 해줄 때까지 대기
+// 생성만 해놓고 자식 프로세스가 __do_fork에서 fork_sema를 sema_up 해줄 때까지 대기한다.
+// 왜냐하면, 부모 프로세스는 자식 프로세스가 성공적으로 복제되었는지 여부를 알 때까지 fork()에서 반환해서는 안된다.
+	sema_down(&child->fork_sema); 
 
-	if (child->exit_status == TID_ERROR)
+	if (child->exit_status == TID_ERROR) // 자식 프로세스가 리소스를 복제하지 못했을 경우, 부모의 fork() 호출은 TID_ERROR를 반환한다.
 		return TID_ERROR;
 
-	return tid;  // 부모 프로세스의 리턴값 : 생성한 자식 프로세스의 tid
+// 부모 프로세스의 리턴값 : 생성한 자식 프로세스의 tid
+// 자식 프로세스의 리턴값 : 0
+	return tid;  
 }
 
 #ifndef VM

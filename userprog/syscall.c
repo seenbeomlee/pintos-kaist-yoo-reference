@@ -14,8 +14,6 @@
 #include "threads/palloc.h"
 #include "userprog/process.h"
 
-struct lock filesys_lock;  // 파일 읽기/쓰기 용 lock
-
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 
@@ -122,13 +120,7 @@ void halt (void) {
  power_off(); // 핀토스를 종료시키는 시스템 콜이다.
 }
 
-/** 2
- * 현재 프로세스를 종료시키는 시스템 콜이다.
- * 종료시, 프로세스 이름 : 'exit(status)'를 출력한다.
- * 정상적으로 종료시 status는 0이 된다.
- * status : 프로그램이 정상적으로 종료되었는지 확인한다.
- */
-void exit( int status) {
+void exit (int status) {
 	struct thread *t = thread_current();
 	t->exit_status = status;
 	printf("%s: exit(%d)\n", t->name, t->exit_status); // Process Termination Message
@@ -275,9 +267,8 @@ void close(int fd) {
 }
 
 pid_t fork(const char *thread_name) {
-    check_address(thread_name);
-
-    return process_fork(thread_name, NULL);
+	check_address(thread_name);
+	return process_fork(thread_name, NULL);
 }
 
 int 
@@ -293,6 +284,7 @@ exec(const char *cmd_line)
 
 	memcpy(cmd_copy, cmd_line, size);
 
+// 만약 프로그램이 프로세스를 로드하지 못하거나, 다른 이유로 돌리지 못하게 되면 exit_status == -1을 반환하며 프로세스가 종료된다.
 	if (process_exec(cmd_copy) == -1)
 		return -1;
 
@@ -300,5 +292,5 @@ exec(const char *cmd_line)
 }
 
 int wait(pid_t tid) {
-    return process_wait(tid);
+	return process_wait(tid);
 }
