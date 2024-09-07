@@ -3,6 +3,9 @@
 #ifndef USERPROG_SYSCALL_H
 #define USERPROG_SYSCALL_H
 
+/* Process identifier. */
+typedef int pid_t;
+
 void syscall_init (void);
 
 void check_address (void *addr);
@@ -67,5 +70,25 @@ int tell(int fd);
 void close(int fd);
 
 pid_t fork(const char *thread_name);
+
+/** 2
+ * 자식 프로세스를 생성하고 프로그램을 실행시키는 시스템 콜
+ * 프로세스를 생성하는 함수를 이용한다. (command line parsing)
+ * 프로세스 생성에 성공시 생성된 프로세스의 pid 값을 반환, 실패시 -1을 반환
+ * 부모 프로세스는 자식 프로세스의 응용 프로그램이 메모리에 탑재 될 때 까지 대기한다.
+ * semaphore를 이용한다.
+ * cmd_line = 새로운 프로세스에 실행할 프로그램 명령어
+ * pid_t는 tid_t와 동일한 int 자료형이다.
+ */
+int exec(const char *cmd_line);
+
+/** 2
+ * 현재 process_wait()는 -1을 리턴한다. - init process는 user process가 종료될 때까지 대기하지 않고 핀토스를 종료시킨다.
+ * process_wait() 기능은 다음과 같다.
+ * 1. 자식 프로세스가 모두 종료될 때까지 대기(sleep state)한다.
+ * 2. 자식 프로세스가 올바르게 종료되었는지 확인한다.
+ * wait() 시스템 콜을 구현한다.
+ */
+int wait(pid_t tid);
 
 #endif /* userprog/syscall.h */

@@ -79,15 +79,6 @@ initd (void *f_name) {
 	NOT_REACHED ();
 }
 
-/* Clones the current process as `name`. Returns the new process's thread id, or
- * TID_ERROR if the thread cannot be created. */
-tid_t
-process_fork (const char *name, struct intr_frame *if_ UNUSED) {
-	/* Clone current thread to new thread.*/
-	return thread_create (name,
-			PRI_DEFAULT, __do_fork, thread_current ());
-}
-
 #ifndef VM
 /* Duplicate the parent's address space by passing this function to the
  * pml4_for_each. This is only for the project 2. */
@@ -245,6 +236,10 @@ process_exec (void *f_name) {
 // success는 bool type이니까 load에 성공하면 1, 실패하면 0 반환.
 // 이때 file_name: f_name의 첫 문자열을 parsing하여 넘겨줘야 한다!
 
+	/* If load failed, quit. */
+	if (!success)
+		return -1;
+
 	/** project2-Command Line Parsing */
 	argument_stack(arg_list, arg_cnt, &_if);
 
@@ -255,16 +250,13 @@ process_exec (void *f_name) {
 	 * file_name: 프로그램 파일 받기 위해 만든 임시변수. 따라서 load 끝나면 메모리 반환.
 	 */
 	palloc_free_page (file_name);
-	/* If load failed, quit. */
-	if (!success)
-		return -1;
 
-	/** 2
-	 * argument parsing test를 위한 무한 루프 추가
-	 * 결과를 확인하기 위해 hex_dump()함수를 사용한다.
-	 * 이 함수는 메모리의 내용을 16진수 형식으로 출겨해서 stack에 저장된 값을 확인할 수 있다.
-	 */
-	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true); // 0x47480000	
+	// /** 2
+	//  * argument parsing test를 위한 무한 루프 추가
+	//  * 결과를 확인하기 위해 hex_dump()함수를 사용한다.
+	//  * 이 함수는 메모리의 내용을 16진수 형식으로 출겨해서 stack에 저장된 값을 확인할 수 있다.
+	//  */
+	// hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true); // 0x47480000	
 
 	/* Start switched process. */
 	do_iret (&_if); // 만약 load가 실행됐다면 context switching을 진행한다.
@@ -286,13 +278,25 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	/** 2
-	 * argument parsing test를 위한 무한 루프 추가
-	 * 핀토스는 user process를 생성한 후 프로세스 종료를 대기해야 하는데, 자식 프로세스가 종료될 때까지 대기한다.
-	 * 현재는 process_wait()를 구현하지 않았으므로, 일단 무한 대기하도록 임의 설정한다.
-	 */
-	while (1) {}
-	return -1;
+	// /** 2
+	//  * argument parsing test를 위한 무한 루프 추가
+	//  * 핀토스는 user process를 생성한 후 프로세스 종료를 대기해야 하는데, 자식 프로세스가 종료될 때까지 대기한다.
+	//  * 현재는 process_wait()를 구현하지 않았으므로, 일단 무한 대기하도록 임의 설정한다.
+	//  */
+	// while (1) {}
+	// return -1;
+	struct thread *child = get_child_process(child_tid);
+	if (child == NULL)
+		return -1;
+
+	sema_down(&child->wait_sema);  // 자식 프로세스가 종료될 때 까지 대기.
+
+	int exit_status = child->exit_status;
+	list_remove(&child->child_elem);
+
+	sema_up(&child->exit_sema);  // 자식 프로세스가 죽을 수 있도록 signal
+
+	return exit_status;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -671,6 +675,8 @@ int process_close_file(int fd) {
 	return 0;
 }
 
+/* Clones the current process as `name`. Returns the new process's thread id, or
+ * TID_ERROR if the thread cannot be created. */
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	struct thread *curr = thread_current();
