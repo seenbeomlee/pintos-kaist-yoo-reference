@@ -23,4 +23,11 @@ int process_add_file(struct file *f);
 struct file *process_get_file(int fd);
 int process_close_file(int fd);
 
+/** 2
+ * hierarchical process structure
+ * 현재 프로세스의 자식 리스트를 검색하여 해당 pid에 맞는 process descriptor를 반환한다.
+ * pid를 갖는 프로세스 디스크립터가 존재하지 않을 경우 NULL을 반환한다.
+ */
+struct thread *get_child_process(int pid);
+
 #endif /* userprog/process.h */

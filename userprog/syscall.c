@@ -273,3 +273,9 @@ void close(int fd) {
 
 	file_close(file);
 }
+
+pid_t fork(const char *thread_name) {
+    check_address(thread_name);
+
+    return process_fork(thread_name, NULL);
+}

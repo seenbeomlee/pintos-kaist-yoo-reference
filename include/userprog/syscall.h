@@ -66,4 +66,6 @@ int tell(int fd);
  */
 void close(int fd);
 
+pid_t fork(const char *thread_name);
+
 #endif /* userprog/syscall.h */
