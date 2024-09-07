@@ -57,7 +57,7 @@ syscall_init (void) {
 void // void 형식에 return을 추가해야 한다. (디버깅하다 발견한 사실이라 함.)
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-int sys_number = f->R.rax;
+	int sys_number = f->R.rax;
 	// Argument 순서
 	// %rdi %rsi %rdx %r10 %r8 %r9
 	switch (sys_number) {
@@ -283,20 +283,20 @@ pid_t fork(const char *thread_name) {
 int 
 exec(const char *cmd_line) 
 {
-    check_address(cmd_line);
+	check_address(cmd_line);
 
-    off_t size = strlen(cmd_line) + 1;
-    char *cmd_copy = palloc_get_page(PAL_ZERO);
+	off_t size = strlen(cmd_line) + 1;
+	char *cmd_copy = palloc_get_page(PAL_ZERO);
 
-    if (cmd_copy == NULL)
-        return -1;
+	if (cmd_copy == NULL)
+		return -1;
 
-    memcpy(cmd_copy, cmd_line, size);
+	memcpy(cmd_copy, cmd_line, size);
 
-    if (process_exec(cmd_copy) == -1)
-        return -1;
+	if (process_exec(cmd_copy) == -1)
+		return -1;
 
-    return 0;  // process_exec 성공시 리턴 값 없음 (do_iret)
+	return 0;  // process_exec 성공시 리턴 값 없음 (do_iret)
 }
 
 int wait(pid_t tid) {

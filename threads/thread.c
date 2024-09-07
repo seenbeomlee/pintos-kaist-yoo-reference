@@ -571,7 +571,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->nice = NICE_DEFAULT;
 	t->recent_cpu = RECENT_CPU_DEFAULT;
 	
-	t->exit_status = 0; // for system call
+	// t->exit_status = 0; // for system call
 
 	/** 2
 	 * file descriptor

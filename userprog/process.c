@@ -223,11 +223,11 @@ process_exec (void *f_name) {
 
 /** project2-Command Line Parsing */
 	char *ptr, *arg;
-	int arg_cnt = 0;
-	char *arg_list[32];
+	int argc = 0;
+	char *argv[64];
 // 파싱을 통해 제대로 된 파일 이름을 구하도록 정정한다.
-	for (arg = strtok_r(file_name, " ", &ptr); arg != NULL; arg = strtok_r(NULL, " ", &ptr))
-		arg_list[arg_cnt++] = arg;
+  for (arg = strtok_r(file_name, " ", &ptr); arg != NULL; arg = strtok_r(NULL, " ", &ptr))
+		argv[argc++] = arg;
 
 	/* And then load the binary */
 	// load() 함수는 실행할 프로그램의 binary 파일을 메모리에 올리는 역할을 한다.
@@ -241,7 +241,7 @@ process_exec (void *f_name) {
 		return -1;
 
 	/** project2-Command Line Parsing */
-	argument_stack(arg_list, arg_cnt, &_if);
+	argument_stack(argv, argc, &_if);
 
 	/** 2
 	 * 어라, 근데 page를 할당해준 적이 없는데 왜 free를 하는 거지? 
@@ -320,23 +320,23 @@ process_exit (void) {
 
 	sema_down(&curr->exit_sema);  // 이후에는 부모 프로세스가 종료될 떄까지 대기한다.
 
-	process_cleanup ();
+	// process_cleanup ();
 }
 
 struct thread 
 *get_child_process(int pid) 
 {
-    struct thread *curr = thread_current(); // struct thread *thread_current(void) == 현재 프로세스의 디스크립터를 반환한다.
-    struct thread *t;
+	struct thread *curr = thread_current(); // struct thread *thread_current(void) == 현재 프로세스의 디스크립터를 반환한다.
+	struct thread *t;
 
-    for (struct list_elem *e = list_begin(&curr->child_list); e != list_end(&curr->child_list); e = list_next(e)) {
-        t = list_entry(e, struct thread, child_elem);
+	for (struct list_elem *e = list_begin(&curr->child_list); e != list_end(&curr->child_list); e = list_next(e)) {
+		t = list_entry(e, struct thread, child_elem);
 
-        if (pid == t->tid)
-            return t;
-    }
+		if (pid == t->tid)
+			return t;
+	}
 
-    return NULL;
+	return NULL;
 }
 
 /* Free the current process's resources. */
@@ -463,6 +463,10 @@ load (const char *file_name, struct intr_frame *if_) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
 	}
+
+   /** project2-System Call - 파일 실행 명시 및 접근 금지 설정  */
+	t->runn_file = file;
+	file_deny_write(file); /** Project 2: Denying Writes to Executables */
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -681,23 +685,23 @@ tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	struct thread *curr = thread_current();
 
-    struct intr_frame *f = (pg_round_up(rrsp()) - sizeof(struct intr_frame));  // 현재 쓰레드의 if_는 페이지 마지막에 붙어있다.
-    memcpy(&curr->parent_if, f, sizeof(struct intr_frame));                    // 1. 부모를 찾기 위해서 2. do_fork에 전달해주기 위해서
+	struct intr_frame *f = (pg_round_up(rrsp()) - sizeof(struct intr_frame));  // 현재 쓰레드의 if_는 페이지 마지막에 붙어있다.
+	memcpy(&curr->parent_if, f, sizeof(struct intr_frame));                    // 1. 부모를 찾기 위해서 2. do_fork에 전달해주기 위해서
 
     /* 현재 스레드를 새 스레드로 복제합니다.*/
-    tid_t tid = thread_create(name, PRI_DEFAULT, __do_fork, curr);
+	tid_t tid = thread_create(name, PRI_DEFAULT, __do_fork, curr);
 
-    if (tid == TID_ERROR)
-        return TID_ERROR;
+	if (tid == TID_ERROR)
+		return TID_ERROR;
 
-    struct thread *child = get_child_process(tid);
+	struct thread *child = get_child_process(tid);
 
-    sema_down(&child->fork_sema);  // 생성만 해놓고 자식 프로세스가 __do_fork에서 fork_sema를 sema_up 해줄 때까지 대기
+	sema_down(&child->fork_sema);  // 생성만 해놓고 자식 프로세스가 __do_fork에서 fork_sema를 sema_up 해줄 때까지 대기
 
-    if (child->exit_status == TID_ERROR)
-        return TID_ERROR;
+	if (child->exit_status == TID_ERROR)
+		return TID_ERROR;
 
-    return tid;  // 부모 프로세스의 리턴값 : 생성한 자식 프로세스의 tid
+	return tid;  // 부모 프로세스의 리턴값 : 생성한 자식 프로세스의 tid
 }
 
 #ifndef VM
