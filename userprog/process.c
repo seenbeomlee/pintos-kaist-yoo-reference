@@ -687,6 +687,12 @@ tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	struct thread *curr = thread_current();
 
+/** 2
+ * parent -> if는 사용할 수 없다.
+ * fork()를 하면 자식은 부모의 if를 물려받아야 하는데, 
+ * 지금은 fork()를 하면서 context switch가 일어난 상태로, 현재 부모의 if에는 커널이 작업하던 정보가 저장되어 있다.
+ * 하지만, 자식에게 물려줘야 하는 tf는 커널이 작업하던 정보가 아니라, user-level에서 부모 프로세스가 작업하던 정보를 물려줘야 한다.
+ */
 	struct intr_frame *f = (pg_round_up(rrsp()) - sizeof(struct intr_frame));  // 현재 쓰레드의 if_는 페이지 마지막에 붙어있다.
 	memcpy(&curr->parent_if, f, sizeof(struct intr_frame));                    // 1. 부모를 찾기 위해서 2. do_fork에 전달해주기 위해서
 
@@ -696,7 +702,7 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	if (tid == TID_ERROR)
 		return TID_ERROR;
 
-	struct thread *child = get_child_process(tid);
+	struct thread *child = get_child_process(tid); // 자식이 load될 때까지 대기하기 위해서 방금 생성한 자식 thread를 찾는다.
 
 // 생성만 해놓고 자식 프로세스가 __do_fork에서 fork_sema를 sema_up 해줄 때까지 대기한다.
 // 왜냐하면, 부모 프로세스는 자식 프로세스가 성공적으로 복제되었는지 여부를 알 때까지 fork()에서 반환해서는 안된다.

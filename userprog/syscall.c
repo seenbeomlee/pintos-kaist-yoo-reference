@@ -109,6 +109,8 @@ syscall_handler (struct intr_frame *f UNUSED) {
 /** 2
  * 주소 값이 user 영역에서 사용하는 주소 값인지 확인한다.
  * user 영역을 벗어난 영역일 경우, process를 종료한다. (exit (-1))
+ * pintos에서는 시스템 콜이 접근할 수 있는 주소를 0cx0000000 ~ 0x8048000(== KERN_BASE) 으로 제한한다. (이 이상은 커널 영역이다.)
+ * 유저 영역을 벗어난 영역일 경우, 비정상 접근이라고 판단하여 exit(-1)로 프로세스를 종료한다.
  */
 void 
 check_address (void *addr) {
@@ -282,6 +284,10 @@ exec(const char *cmd_line)
 	if (cmd_copy == NULL)
 		return -1;
 
+/** 2
+ * cmd_line을 대신해서 process_exec()에 전달할 복사본(cmd_copy)을 만든다.
+ * cmd_line은 const char* 이라서 수정할 수 없기 때문이다.
+ */
 	memcpy(cmd_copy, cmd_line, size);
 
 // 만약 프로그램이 프로세스를 로드하지 못하거나, 다른 이유로 돌리지 못하게 되면 exit_status == -1을 반환하며 프로세스가 종료된다.

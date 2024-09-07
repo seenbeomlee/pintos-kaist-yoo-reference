@@ -63,6 +63,19 @@ int filesize(int fd);
  * buffer : 읽은 데이터를 저장할 버퍼의 주소값
  * size : 읽을 데이터 크기
  * fd 값이 0(standard input)이라면, 키보드의 데이터를 읽어 buffer에 저장한다. (input_getc() 사용)
+ * 
+ * read와 write 함수는 다른 시스템 콜과는 다르게 lock을 활용해야 한다.
+ * 파일을 읽는 도중, 또는 파일에 값을 쓰는 과정에서 다른 thread가 파일에 접근하여 값을 바꿔버릴 수 있으므로,
+ * 한 파일에는 하나의 thread만 접근할 수 있게 하기 위해 lock을 사용한다.
+ * 
+ * 1. 파일의 디스크립터 fd,
+ * 2. 파일에서 값을 읽어 저장할 buffer,
+ * 3. 읽어들일 값의 크기인 length를 받아온다.
+ * 
+ * read의 경우, standard input에서 값을 읽어올 수 있는데,
+ * 이 경우 파일 디스크립터 값은 0이 된다.
+ * standard_input에서 값을 읽어오는 경우 input_getc () 함수를 통해 구현할 수 있고,
+ * 다른 파일을 열어서 읽는 경우에는 file_read () 함수를 통해 구현할 수 있다.
  */
 int read(int fd, void *buffer, unsigned length);
 
@@ -72,6 +85,13 @@ int read(int fd, void *buffer, unsigned length);
  * buffer : 기록할 데이터를 저장한 버퍼의 주소 값
  * size : 기록할 데이터 크기
  * fd 값이 1(standard output)일 때, 버퍼에 저장된 데이터를 화면에 출력한다. (putbuf () 이용)
+ * 
+ * read와 마찬가지로 lock을 사용해서 구현해야한다.
+ * 값을 쓸 파일의 디스크립터 fd, 쓸 값이 들어있는 buffer, 쓸 값의 크기인 size를 파라미터로 받는다.
+ * write도 read와 비슷하게 standard output에 값을 쓸 수 있다.
+ * 이 때 파일 디스크립터 값은 1이며, 콘솔에 값을 쓰는 경우에 해당한다.
+ * standard_output에 값을 쓰는 경우 putbuf () 함수를 통해 구현할 수 있다.
+ * 다른 파일에 값을 쓰는 경우에는 file_write () 함수를 통해 구현할 수 있다.
  */
 int write(int fd, const void *buffer, unsigned length);
 
@@ -99,8 +119,13 @@ void close(int fd);
  * 피호출자(callee) 저장 레지스터인 %rbx, %rsp, %rbp와 %r12~ %r15를 제외한 레지스터 값을 복제할 필요가 없다.
  * 자식 프로세스의 pid를 반환해야 한다.
  * 자식 프로세스에서 반환 값은 0이어야 한다.
- * 부모 프로세스는 자식 프로세스가 성공적으로 복제되엇는지 여부를 알 때까지 fork ()에서 반환해서는 안된다.
+ * 부모 프로세스는 자식 프로세스가 성공적으로 복제되었는지 여부를 알 때까지 fork ()에서 반환해서는 안된다.
  * 즉, 자식 프로세스가 리소스를 복제하지 못하면 부모의 fork ()호출은 TID_ERROR를 반환할 것이다.
+ * 
+ * fork ()의 리턴 값은 크게 세 가지 종류로 나눌 수 있다.
+ * 1. negative value = 자식 프로세스가 정상적으로 만들어지지 않았을 때를 의미한다.
+ * 2. zero = 새로 만들어진 자식 프로세스가 받는 값이다. fork를 호출한 부모 프로세스와 새로 만들어진 자식 프로세스를 구분하기 위해 자식 프로세스에게는 0을 리턴한다.
+ * 3. positive value = 자식 프로세스가 정상적으로 만들어졌을 때, 부모 프로세스가 받는 리턴 값이다. 자식 프로세스의 pid 값이 리턴된다.
  */
 pid_t fork(const char *thread_name);
 
