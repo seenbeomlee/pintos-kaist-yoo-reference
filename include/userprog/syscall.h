@@ -155,4 +155,21 @@ int exec(const char *cmd_line);
  */
 int wait(pid_t tid);
 
+/** 2
+ * dup2() 시스템 콜은 인자로 받은 oldfd 파일 디스크립터의 복사본을 생성하고,
+ * 이 복사본의 파일 디스크립터 값은 인자로 받은 newfd가 되도록 한다.
+ * dup2() 시스템 콜이 파일 디스크립터를 복사해서 새 파일 디스크립터를 생성하는 데 성공한다면, newfd를 리턴한다.
+ * 만약, newfd값이 이전에 열려있었다면, newfd는 재사용되기 전에 조용히 닫힌다.
+ * 이 시스템 콜로부터 성공적으로 값을 반환받은 후에, oldfd와 newfd는 호환해서 사용이 가능하다.
+ * 이 둘은 서로 다른 파일 디스크립터이지만, 똑같은 열린 파일 디스크립터를 의미하기 때문에,
+ * 같은 file offset과 status flags를 공유하고 있다.
+ * 만약, 다른 디스크립터가 seek을 사용해서 file offset이 수정되었다면, 다른 스크립터에서도 이 값은 똑같이 수정된다.
+ * 
+ * 1. 만약 oldfd가 유효한 파일 디스크립터가 아니라면, dup2()콜은 실패하여 1을 반환하고, newfd는 닫히지 않는다.
+ * 2. 만약 oldfd가 유요한 파일 디스크립터이고, newfd는 oldfd와 같은 값을 가지고 있다면, dup2()가 할일은 따로 없고, newfd 값을 리턴한다.
+*/
+int dup2(int oldfd, int newfd);
+
+void process_insert_file(int fd, struct file *f)
+
 #endif /* userprog/syscall.h */

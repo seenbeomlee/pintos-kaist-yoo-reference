@@ -101,6 +101,9 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_CLOSE:
 			close(f->R.rdi);
 			break;
+		case SYS_DUP2:
+			f->R.rax = dup2(f->R.rdi, f->R.rsi);
+			break;
 		default:
 			exit(-1);
 	}
@@ -299,4 +302,49 @@ exec(const char *cmd_line)
 
 int wait(pid_t tid) {
 	return process_wait(tid);
+}
+
+/** 2
+ * extend file discriptor
+ */
+int dup2(int oldfd, int newfd) {
+	if (oldfd < 0 || newfd < 0)
+		return -1;
+
+	struct file *oldfile = process_get_file(oldfd);
+
+	if (oldfile == NULL)
+		return -1;
+
+	if (oldfd == newfd)
+		return newfd;
+
+	struct file *newfile = process_get_file(newfd);
+
+	if (oldfile == newfile)
+		return newfd;
+
+	close(newfd);
+
+	newfd = process_insert_file(newfd, oldfile);
+
+	return newfd;
+}
+
+/** 2
+ * extend file descriptor
+ */
+void process_insert_file(int fd, struct file *f) {
+	struct thread *curr = thread_current();
+	struct file **fdt = curr->fdt;
+
+	if (fd < 0 || fd >= FDCOUNT_LIMIT)
+		return -1;
+
+	if (f > STDERR)
+		f->dup_count++;
+
+	fdt[fd] = f;
+
+	return fd;
 }

@@ -1,6 +1,15 @@
 #ifndef USERPROG_PROCESS_H
 #define USERPROG_PROCESS_H
 
+/** 2
+ * extend file descriptor
+ * 0의 경우, NULL이나 인자값과 구분하기 위한 dummy value로 사용될 것이다.
+ * 따라서, 0,1,2가 아니라 1,2,3을 사용하게된다.
+ */
+#define STDIN 1
+#define STDOUT 2
+#define STDERR 3
+
 #include "threads/thread.h"
 
 tid_t process_create_initd (const char *file_name);

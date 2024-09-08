@@ -252,9 +252,9 @@ thread_create (const char *name, int priority,
 	t->exit_status = 0; // exit_status 초기화
 
 	t->fd_idx = 3; // 항상 3부터 할당되고, 비어있는 인덱스 중에서 작은 인덱스에 할당된다.
-	t->fdt[0] = 0; // stdin 예약된 자리 (dummy)
-	t->fdt[1] = 1; // stdout 예약된 자리 (dummy)
-	t->fdt[2] = 2; // stderr 예약된 자리 (dummy)
+	t->fdt[0] = STDIN; // stdin 예약된 자리 (dummy)
+	t->fdt[1] = STDOUT; // stdout 예약된 자리 (dummy)
+	t->fdt[2] = STDERR; // stderr 예약된 자리 (dummy)
 
 /** 2
  * hierarchical process structure
