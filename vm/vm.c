@@ -129,6 +129,24 @@ vm_handle_wp (struct page *page UNUSED) {
 }
 
 /* Return true on success */
+/** 3
+ * 'f' : page fault 예외가 발생할 때 실행되던 context 정보가 담겨있는 interrupt frame 이다.
+ * 
+ * 'addr' : page fault 예외가 발생할 때 접근한 virtual address 이다.
+ * 					즉, 이 virtual address에 접근했기 때문에 page fault가 발생한 것이다.
+ * 
+ * 'not_present'
+ * - true : addr에 매핑된 physical page가 존재하지 않는 경우에 해당한다.
+ * - false : read only page에 writing 작업을 하려는 시도에 해당한다.
+ * 
+ * 'write'
+ * - true : addr에 writing 작업을 시도한 경우에 해당한다.
+ * - false : addr에 read 작업을 시도한 경우에 해당한다.
+ * 
+ * 'user'
+ * - true : user에 의한 접근에 해당한다.
+ * - false : kernel에 의한 접근에 해당한다.
+ */
 bool
 vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {

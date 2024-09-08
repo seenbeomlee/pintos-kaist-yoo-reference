@@ -3,6 +3,11 @@
 #include <stdbool.h>
 #include "threads/palloc.h"
 
+/** 3
+ * supplemental page table
+ */
+#include <hash.h>
+
 enum vm_type {
 	/* page not initialized */
 	VM_UNINIT = 0,
@@ -56,6 +61,7 @@ struct page {
 #ifdef EFILESYS
 		struct page_cache page_cache;
 #endif
+	struct hash_elem hash_elem;
 	};
 };
 
@@ -85,6 +91,7 @@ struct page_operations {
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
 struct supplemental_page_table {
+	struct hash spt_hash;
 };
 
 #include "threads/thread.h"
