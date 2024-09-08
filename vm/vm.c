@@ -73,10 +73,7 @@ spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
 bool
 spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		struct page *page UNUSED) {
-	int succ = false;
-	/* TODO: Fill this function. */
-
-	return succ;
+	return hash_insert(&spt->spt_hash, &page->hash_elem) ? false : true;
 }
 
 void
@@ -223,4 +220,13 @@ bool page_less(const struct hash_elem *a, const struct hash_elem *b, void *aux) 
 	struct page *page_b = hash_entry(b, struct page, hash_elem);
 
 	return page_a->va < page_b->va;
+}
+
+struct page* spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
+	struct page *page = (struct page *)malloc(sizeof(struct page));     
+	page->va = pg_round_down(va);                                       
+	struct hash_elem *e = hash_find(&spt->spt_hash, &page->hash_elem);  
+	free(page);                                              
+
+	return e != NULL ? hash_entry(e, struct page, hash_elem) : NULL;
 }

@@ -99,8 +99,16 @@ void supplemental_page_table_init (struct supplemental_page_table *spt);
 bool supplemental_page_table_copy (struct supplemental_page_table *dst,
 		struct supplemental_page_table *src);
 void supplemental_page_table_kill (struct supplemental_page_table *spt);
-struct page *spt_find_page (struct supplemental_page_table *spt,
-		void *va);
+
+/** 3
+ * supplementary page table에서 va에 해당하는 구조체 페이지를 찾아 반환한다.
+ */
+struct page *spt_find_page (struct supplemental_page_table *spt, void *va);
+
+/** 3
+ * supplementary page table에 struct page를 삽입한다.
+ * 가상 주소가 이미 supplementary page table에 존재하면 삽입하지 않고, 존재하지 않으면 삽입한다.
+ */
 bool spt_insert_page (struct supplemental_page_table *spt, struct page *page);
 void spt_remove_page (struct supplemental_page_table *spt, struct page *page);
 
@@ -124,7 +132,8 @@ enum vm_type page_get_type (struct page *page);
 uint64_t page_hash(const struct hash_elem *e, void *aux);
 
 /** 3
- * 
+ * 체이닝 방식의 spt를 구현하기 위한 함수이다.
+ * 해시 테이블 버킷 내의 두 페이지의 주솟값을 비교한다.
  */
 bool page_less(const struct hash_elem *a, const struct hash_elem *b, void *aux);
 
