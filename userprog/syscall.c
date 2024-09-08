@@ -117,6 +117,11 @@ syscall_handler (struct intr_frame *f UNUSED) {
  */
 void 
 check_address (void *addr) {
+	/** 2
+	 * null 포인터,
+	 * 매핑되지 않은 가상 메모리를 가리키는 포인터,
+	 * 커널 가상 주소 공간(KERN_BASE 이상)을 요청하는 경우 거부해야 한다.
+	 */
 	if (is_kernel_vaddr(addr) || addr == NULL || pml4_get_page(thread_current()->pml4, addr) == NULL)
 		exit(-1);
 }
@@ -226,7 +231,7 @@ int write(int fd, const void *buffer, unsigned length) {
 
 	struct file *file = process_get_file(fd);
 
-	if (file == STDIN || file == NULL)  
+	if (file == STDIN || file == NULL || fd < 0)  
 		return -1;
 
 	if (file == STDOUT) { 
@@ -238,7 +243,7 @@ int write(int fd, const void *buffer, unsigned length) {
 		putbuf(buffer, length);
 		return length;
 	}
-	
+
 	lock_acquire(&filesys_lock);
 	bytes = file_write(file, buffer, length);
 	lock_release(&filesys_lock);
