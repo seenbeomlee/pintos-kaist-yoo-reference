@@ -314,7 +314,11 @@ process_exit (void) {
 	for (int fd = 0; fd < curr->fd_idx; fd++)  // FDT 비우기
 		close(fd);
 
-	file_close(curr->runn_file);  // 현재 프로세스가 실행중인 파일 종료
+/** 2
+ * 현재 프로세스가 실행중인 파일을 종료한다.
+ * load() 함수에서 file_close하지 않고, process_exit()에서 닫는다.
+ */
+	file_close(curr->runn_file); 
 
 	palloc_free_multiple(curr->fdt, FDT_PAGES); // 파일 디스크립터 동적 할당 제거
 
@@ -468,9 +472,13 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	}
 
-	t->runn_file = file;
+	// 스레드가 삭제될 때 파일을 닫을 수 있도록 스레드 구조체에 파일을 저장해둔다.
+	t->runn_file = file; 
 	/** 2
 	 * 열려있는 파일에 쓰기를 방지한다.
+	 * User Programs 5번째 과제(Deny Write on Executables)이다.
+	 * 이 부분을 구현하면 rox 관련 테스트들을 통과할 수 있다. (rox : Read Only for eXecutables. )
+	 * 
 	 * 1. file_allow_write ()를 파일 안에서 호출하면 다시 쓰기가 가능해지도록 만들 수 있다.
 	 * 2. 파일을 닫아도 다시 쓰기가 가능해지게 된다. 그러므로, 프로세스의 실행 파일에 쓰기를 계속 거부하려면
 	 * 		프로세스가 돌아가는 동안에는 실행 파일이 쭉- 열려 있게끔 해야 한다.
@@ -547,11 +555,12 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* Set up stack. */
 	// 전부 메모리로 올린 뒤에 스택을 만드는 과정이 실행된다.
-	if (!setup_stack (if_))
+	if (!setup_stack (if_)) // user stack 초기화
 		goto done;
 
 	/* Start address. */
 	// 어떤 명령부터 실행되는지를 가리키는, 즉 entry point 역할의 rip를 설정하고, 열었던 실행 파일을 닫는 것으로 load()가 끝난다.
+	// rip == 프로그램  카운터(실행할 다음 인스트럭션의 메모리 주소)
 	if_->rip = ehdr.e_entry;
 
 	/* TODO: Your code goes here.
@@ -561,6 +570,13 @@ load (const char *file_name, struct intr_frame *if_) {
 
 done:
 	/* We arrive here whether the load is successful or not. */
+	/** 2
+	 * 현재 load() 함수에서는 로드가 완료되면 파일을 바로 close하는데, 
+	 * 여기서 close하지 않고 thread가 삭제될 때 파일을 닫도록 변경해야 한다.
+	 * 왜냐하면, 파일을 닫으면 쓰기 작업이 다시 허용되기 때문이다.
+	 * 따라서, 프로세스의 실행 파일에 대한 쓰기를 거부하려면 해당 파일을 프로세스가 실행 중인 동안 계속 열어두어야 한다.
+	 * 파일은 여기서 닫지 않고, thread가 삭제될 때 process_exit()에서 닫는다.
+	 */
 	// file_close (file);
 	return success;
 }
