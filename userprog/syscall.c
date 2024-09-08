@@ -184,10 +184,13 @@ int filesize(int fd) {
 }
 
 int read(int fd, void *buffer, unsigned length) {
+	struct thread *curr = thread_current();
 	check_address(buffer);
 
-	if (fd == 0) {  // 0(stdin) -> keyboard(standard input)로 직접 입력
-		int i = 0;  // 쓰레기 값 return 방지
+	struct file *file = process_get_file(fd);
+
+	if (file == STDIN) { 
+		int i = 0; 
 		char c;
 		unsigned char *buf = buffer;
 
@@ -197,18 +200,16 @@ int read(int fd, void *buffer, unsigned length) {
 			if (c == '\0')
 				break;
 		}
-
-		return i; // i == length
+		return i;
 	}
-	// 그 외의 경우
-	if (fd < 3)  // stdout, stderr를 읽으려고 할 경우 & fd가 음수일 경우
+
+	if (file == NULL || file == STDOUT || file == STDERR)  // 빈 파일, stdout, stderr를 읽으려고 할 경우
 		return -1;
 
-	struct file *file = process_get_file(fd);
+	// if (fd < 0) // 음의 인덱스를 읽으려고 할 경우
+	// 	return -1;
+
 	off_t bytes = -1;
-
-	if (file == NULL)  // 파일이 비어있을 경우
-		return -1;
 
 	lock_acquire(&filesys_lock);
 	bytes = file_read(file, buffer, length);
@@ -220,20 +221,23 @@ int read(int fd, void *buffer, unsigned length) {
 int write(int fd, const void *buffer, unsigned length) {
 	check_address(buffer);
 
+	struct thread *curr = thread_current();
 	off_t bytes = -1;
 
-	if (fd <= 0)  // stdin에 쓰려고 할 경우 & fd 음수일 경우
+	struct file *file = process_get_file(fd);
+
+	if (file == STDIN || file == NULL)  
 		return -1;
 
-	if (fd < 3) {  // 1(stdout) * 2(stderr) -> console로 출력
+	if (file == STDOUT) { 
 		putbuf(buffer, length);
 		return length;
 	}
 
-	struct file *file = process_get_file(fd);
-
-	if (file == NULL)
-		return -1;
+	if (file == STDERR) { 
+		putbuf(buffer, length);
+		return length;
+	}
 
 	lock_acquire(&filesys_lock);
 	bytes = file_write(file, buffer, length);
@@ -261,14 +265,33 @@ int tell(int fd) {
 }
 
 void close(int fd) {
+	struct thread *curr = thread_current();
 	struct file *file = process_get_file(fd);
 
-	if (fd < 3 || file == NULL)
+	if (file == NULL)
 		return;
 
 	process_close_file(fd);
 
-	file_close(file);
+	if (file == STDIN) {
+		file = 0;
+		return;
+	}
+
+	if (file == STDOUT) {
+		file = 0;
+		return;
+	}
+
+	if (file == STDERR) {
+		file = 0;
+		return;
+	}
+
+	if (file->dup_count == 0) // 더이상 해당 파일을 참조하는 곳이 없다면, 해당 파일은 닫혀야 한다.
+		file_close(file);
+	else
+		file->dup_count--;
 }
 
 pid_t fork(const char *thread_name) {
