@@ -4,6 +4,13 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 
+/** 3
+ * frame management
+ * frame table 추가
+ */
+#include "threads/mmu.h"
+static struct list frame_table;
+
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
 void
@@ -16,6 +23,7 @@ vm_init (void) {
 	register_inspect_intr ();
 	/* DO NOT MODIFY UPPER LINES. */
 	/* TODO: Your code goes here. */
+	list_init(&frame_table); // 추가한 frame table 초기화
 }
 
 /* Get the type of the page. This function is useful if you want to know the
@@ -73,6 +81,7 @@ spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
 bool
 spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		struct page *page UNUSED) {
+	// 존재하지 않을 경우에만 삽입한다.
 	return hash_insert(&spt->spt_hash, &page->hash_elem) ? false : true;
 }
 
@@ -105,12 +114,29 @@ vm_evict_frame (void) {
  * and return it. This always return valid address. That is, if the user pool
  * memory is full, this function evicts the frame to get the available memory
  * space.*/
+/** 3
+ * frame management
+ * palloc_get_page() 함수를 호출하여 사용자 풀에서 새로운 physical page(frame)를 가져온다.
+ * 물리 페이지를 할당하고, 해당 페이지의 커널 가상 주소를 반환하는 함수인 palloc_get_page()를 사용한다.
+ * 사용자 풀에서 페이지를 성공적으로 가져오면, 프레임을 할당하고 해당 프레임의 멤버를 초기화한 후 반환한다.
+ * 페이지 할당을 실패할 경우, PANIC ("todo")로 표시한다. - 사용가능한 page가 없다면 swap out을 수행한다. => swap out을 구현한 이후 변경한다.
+ */
 static struct frame *
 vm_get_frame (void) {
 	struct frame *frame = NULL;
 	/* TODO: Fill this function. */
-
+	struct frame *frame = (struct frame *)malloc(sizeof(struct frame));
 	ASSERT (frame != NULL);
+
+	frame->kva = palloc_get_page(PAL_USER | PAL_ZERO); // user pool에서 새로운 physical page를 가져온다.
+
+	if (frame->kva == NULL) // page 할당 실패 -> 나중에 swap_out 처리
+		frame = vm_evict_frame(); 
+	else
+		list_push_back(&frame_table, &frame->frame_elem);
+
+	frame->page = NULL;
+
 	ASSERT (frame->page == NULL);
 	return frame;
 }
@@ -164,15 +190,38 @@ vm_dealloc_page (struct page *page) {
 }
 
 /* Claim the page that allocate on VA. */
+/** 3
+ * frame management
+ * 인자로 주어진 va에 페이지를 하나 할당한다.
+ * 해당 페이지로 vm_do_claim_page를 호출한다.
+ * 
+ * 주소 va에 해당하는 page로 vm_do_claim_page() 함수를 호출한다.
+ * 먼저, va에 해당하는 page(virtual page)를 가져온다.
+ * 그 다음, 해당 페이지로 vm_do_claim_page()를 호출한다.
+ */
 bool
 vm_claim_page (void *va UNUSED) {
 	struct page *page = NULL;
-	/* TODO: Fill this function */
+	struct page *page = spt_find_page(&thread_current()->spt, va);
+
+	if (page == NULL)
+		return false;
 
 	return vm_do_claim_page (page);
 }
 
 /* Claim the PAGE and set up the mmu. */
+/** 3
+ * vm_get_frame() 함수를 통해 프레임 하나를 얻는다.
+ * 프레임의 페이지로 얻은 페이지를 연결한다.
+ * 프레임의 물리적 주소로 얻은 프레임을 연결한다.
+ * 현재 페이지 테이블에 가상 주소에 따른 frame을 매핑한다.
+ * 
+ * 인자로 주어진 page에 physical frame을 할당한다.
+ * 먼저, vm_get_frame 함수를 호출하여 프레임을 가져온다.
+ * 그런 다음, MMU를 설정한다.
+ * 즉, 가상 주소와 물리 주소 간의 매핑을 페이지 테이블에 추가한다.
+ */
 static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
@@ -182,6 +231,8 @@ vm_do_claim_page (struct page *page) {
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
+	if (!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable)) // 가상주소와 물리 주소를 매핑한다.
+		return false;
 
 	return swap_in (page, frame->kva);
 }
@@ -224,9 +275,9 @@ bool page_less(const struct hash_elem *a, const struct hash_elem *b, void *aux) 
 
 struct page* spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
 	struct page *page = (struct page *)malloc(sizeof(struct page));     
-	page->va = pg_round_down(va);                                       
+	page->va = pg_round_down(va); // va에 해당하는 hash_elem 찾기                                       
 	struct hash_elem *e = hash_find(&spt->spt_hash, &page->hash_elem);  
 	free(page);                                              
 
-	return e != NULL ? hash_entry(e, struct page, hash_elem) : NULL;
+	return e != NULL ? hash_entry(e, struct page, hash_elem) : NULL; // 있다면, e에 해당하는 페이지를 반환한다. 없다면, NULL 반환한다.
 }

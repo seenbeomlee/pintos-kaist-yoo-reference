@@ -61,7 +61,8 @@ struct page {
 #ifdef EFILESYS
 		struct page_cache page_cache;
 #endif
-	struct hash_elem hash_elem;
+	struct hash_elem hash_elem; // supplemental page table
+	bool writable; // frame management
 	};
 };
 
@@ -69,6 +70,7 @@ struct page {
 struct frame {
 	void *kva;
 	struct page *page;
+	struct list_elem frame_elem; // frame elem 추가
 };
 
 /* The function table for page operations.
@@ -95,6 +97,10 @@ struct supplemental_page_table {
 };
 
 #include "threads/thread.h"
+/** 3
+ * supplemental page table을 초기화한다.
+ * 이 함수는 새로운 프로세스가 시작될 때 initd()와 프로세스가 fork()될 때 호출된다.
+ */
 void supplemental_page_table_init (struct supplemental_page_table *spt);
 bool supplemental_page_table_copy (struct supplemental_page_table *dst,
 		struct supplemental_page_table *src);
