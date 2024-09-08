@@ -723,6 +723,24 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	return tid;  
 }
 
+/** 2
+ * extend file descriptor
+ */
+process_insert_file(int fd, struct file *f) {
+	struct thread *curr = thread_current();
+	struct file **fdt = curr->fdt;
+
+	if (fd < 0 || fd >= FDCOUNT_LIMIT)
+		return -1;
+
+	if (f > STDERR)
+		f->dup_count++;
+
+	fdt[fd] = f;
+
+	return fd;
+}
+
 #ifndef VM
 /* Codes of this block will be ONLY USED DURING project 2.
  * If you want to implement the function for whole project 2, implement it

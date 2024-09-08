@@ -170,6 +170,4 @@ int wait(pid_t tid);
 */
 int dup2(int oldfd, int newfd);
 
-void process_insert_file(int fd, struct file *f)
-
 #endif /* userprog/syscall.h */

@@ -238,7 +238,7 @@ int write(int fd, const void *buffer, unsigned length) {
 		putbuf(buffer, length);
 		return length;
 	}
-
+	
 	lock_acquire(&filesys_lock);
 	bytes = file_write(file, buffer, length);
 	lock_release(&filesys_lock);
@@ -352,22 +352,4 @@ int dup2(int oldfd, int newfd) {
 	newfd = process_insert_file(newfd, oldfile);
 
 	return newfd;
-}
-
-/** 2
- * extend file descriptor
- */
-void process_insert_file(int fd, struct file *f) {
-	struct thread *curr = thread_current();
-	struct file **fdt = curr->fdt;
-
-	if (fd < 0 || fd >= FDCOUNT_LIMIT)
-		return -1;
-
-	if (f > STDERR)
-		f->dup_count++;
-
-	fdt[fd] = f;
-
-	return fd;
 }
