@@ -139,7 +139,7 @@ __do_fork (void *aux) {
     if_.R.rax = 0;  // 자식 프로세스의 return값 (0)
 
 	/* 2. Duplicate PT */
-	current->pml4 = pml4_create();
+	current->pml4 = pml4_create(); // 부모의 pte를 복사하기 위해서 페이지 테이블을 생성한다. 이때 current는 자식 프로세스가 됨?
 	if (current->pml4 == NULL)
 		goto error;
 
@@ -149,7 +149,7 @@ __do_fork (void *aux) {
 	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
 		goto error;
 #else
-	if (!pml4_for_each (parent->pml4, duplicate_pte, parent))
+	if (!pml4_for_each (parent->pml4, duplicate_pte, parent)) // duplicate_pte == 페이지 테이블을 복사하는 함수(부모 -> 자식)
 		goto error;
 #endif
 
@@ -164,9 +164,10 @@ __do_fork (void *aux) {
 
 	struct file *file;
 
+	// 부모의 fdt를 자식의 fdt로 복사한다.
 	for (int fd = 0; fd < FDCOUNT_LIMIT; fd++) {
 		file = parent->fdt[fd];
-		if (file == NULL)
+		if (file == NULL) // fd 엔트리가 없는 상태에는 그냥 건너뛴다.
 			continue;
 
 		if (file > STDERR)
@@ -175,8 +176,8 @@ __do_fork (void *aux) {
 			current->fdt[fd] = file;
 }
 
-	current->fd_idx = parent->fd_idx;
-	sema_up(&current->fork_sema);  
+	current->fd_idx = parent->fd_idx; // 부모의 next_fd를 자식의 next_fd로 옮겨준다.
+	sema_up(&current->fork_sema); // fork()가 정상적으로 완료되었으므로, 현재 wait 중인 parent를 다시 실행 가능 상태로 만든다.
 
 	process_init();
 
@@ -184,7 +185,7 @@ __do_fork (void *aux) {
 	if (succ)
 		do_iret(&if_);  // 정상 종료 시 자식 Process를 수행하러 감
 
-error:
+error: // 제대로 복제가 안된 상태라면, TID_ERROR를 리턴한다.
     sema_up(&current->fork_sema);  // 복제에 실패했으므로 현재 fork용 sema unblock
     exit(TID_ERROR);
 }
@@ -293,14 +294,24 @@ process_wait (tid_t child_tid UNUSED) {
 	// while (1) {}
 	// return -1;
 	struct thread *child = get_child_process(child_tid);
-	if (child == NULL) // 자식이 아니라면 -1을 반환한다.
+	if (child == NULL) // 해당 자식이 존재하지 않는다면, -1을 반환한다.
 		return -1;
 
+/** 2
+ * 해당 자식 프로세스가 성공적으로 종료될 때까지 부모 프로세스는 대기한다.
+ * init_thread()에서 부모의 wait_sema 값을 '0'으로 초기화하였으므로, 부모 프로세스는 wait_list에 들어가게 된다.
+ * 이후, 자식 프로세스가 종료(process_ext()) 된 후, sema_up을 한 뒤에서야 해당 부모 프로세스가 ready 상태로 전환된다.
+ */
 	sema_down(&child->wait_sema);  // 자식 프로세스가 종료될 때 까지 대기한다. (process_exit에서 자식이 종료될 때 sema_up 해줄 것이다.)
+	
+	// context switching 발생
+
+	// 자식으로부터 종료인자를 전달받고, 리스트에서 삭제한다.
+	int exit_status = child->exit_status;
 	list_remove(&child->child_elem); // 자식이 종료됨을 알리는 'wait_sema' signal을 받으면 현재 스레드(부모)의 자식 리스트에서 제거한다.
 	sema_up(&child->exit_sema);  // 자식 프로세스가 완전히 종료되고 스케줄링이 이어질 수 있도록 자식에게 signal을 보낸다.
 
-	return child->exit_status; // 자식의 exit_status를 반환한다.
+	return exit_status; // 자식의 exit_status를 반환한다.
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -337,14 +348,15 @@ struct thread
 	struct thread *curr = thread_current(); // struct thread *thread_current(void) == 현재 프로세스의 디스크립터를 반환한다.
 	struct thread *t;
 
+	// 자식 리스트를 순회하면서 pid를 검색한다.
 	for (struct list_elem *e = list_begin(&curr->child_list); e != list_end(&curr->child_list); e = list_next(e)) {
 		t = list_entry(e, struct thread, child_elem);
 
-		if (pid == t->tid)
+		if (pid == t->tid) // 해당 pid를 갖는 자식 프로세스가 child_list에 존재하면 해당 thread를 리턴한다.
 			return t;
 	}
 
-	return NULL;
+	return NULL; // 자식 리스트에 해당 pid를 갖는 프로세스가 존재하지 않으면 NULL을 리턴한다.
 }
 
 /* Free the current process's resources. */
@@ -664,6 +676,9 @@ void argument_stack(char **argv, int argc, struct intr_frame *if_) {
 /** 2
  * 현재 thread fdt에 file을 추가한다.
  * 파일이 추가된 위치의 index를 반환한다.
+ * 
+ * 보통은 여기를 while문으로 돌아야 중간에 삭제된 위치(NULL)에 파일을 add할 것 같은데,
+ * 이렇게 index만으로 추가해도 pass가 되는 것이 정상인지 모르겠다.
  */
 int process_add_file(struct file *f) {
 	struct thread *curr = thread_current();
@@ -683,7 +698,7 @@ int process_add_file(struct file *f) {
 struct file *process_get_file(int fd) {
 	struct thread *curr = thread_current();
 
-	if (fd >= FDCOUNT_LIMIT)
+	if (fd >= FDCOUNT_LIMIT) // fd < STDIN 체크?
 		return NULL;
 
 	return curr->fdt[fd];
@@ -697,7 +712,7 @@ struct file *process_get_file(int fd) {
 int process_close_file(int fd) {
 	struct thread *curr = thread_current();
 
-	if (fd >= FDCOUNT_LIMIT)
+	if (fd >= FDCOUNT_LIMIT) // fd < STDIN 체크?
 		return -1;
 
 	curr->fdt[fd] = NULL;
@@ -717,9 +732,17 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
  * 하지만, 자식에게 물려줘야 하는 tf는 커널이 작업하던 정보가 아니라, user-level에서 부모 프로세스가 작업하던 정보를 물려줘야 한다.
  */
 	struct intr_frame *f = (pg_round_up(rrsp()) - sizeof(struct intr_frame));  // 현재 쓰레드의 if_는 페이지 마지막에 붙어있다.
-	memcpy(&curr->parent_if, f, sizeof(struct intr_frame));                    // 1. 부모를 찾기 위해서 2. do_fork에 전달해주기 위해서
+/** 2
+ * 전달받은 intr_frame을 parent_if 필드에 복사한다.
+ * 1. __do_fork()에서 자식 프로세스에 부모의 context 정보를 복사하기 위함이다.
+ * 2. 부모의 intr_frame을 찾는 용도로 활용한다.
+ */
+	memcpy(&curr->parent_if, f, sizeof(struct intr_frame));                   
 
-	/* 현재 스레드를 새 스레드로 복제합니다.*/
+	/** 2
+	 * 현재 스레드를 새 스레드로 복제합니다.
+	 * __do_fork()를 실행하는 Thread를 생성한다.
+	 * 현재 스레드 curr를 인자로 넘겨준다. */
 	tid_t tid = thread_create(name, PRI_DEFAULT, __do_fork, curr);
 
 	if (tid == TID_ERROR)
@@ -727,8 +750,13 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 
 	struct thread *child = get_child_process(tid); // 자식이 load될 때까지 대기하기 위해서 방금 생성한 자식 thread를 찾는다.
 
-// 생성만 해놓고 자식 프로세스가 __do_fork에서 fork_sema를 sema_up 해줄 때까지 대기한다.
-// 왜냐하면, 부모 프로세스는 자식 프로세스가 성공적으로 복제되었는지 여부를 알 때까지 fork()에서 반환해서는 안된다.
+/** 2
+ * 생성만 해놓고 자식 프로세스가 __do_fork에서 fork_sema를 sema_up 해줄 때까지 대기한다.
+ * 왜냐하면, 부모 프로세스는 자식 프로세스가 성공적으로 복제되었는지 여부를 알 때까지 fork()에서 반환해서는 안된다.
+ * init_thread()에서 fork_sema의 값을 '0'으로 초기화 해두었으므로, 부모 프로세스는 wait_list로 들어간다.
+ * 이후 자식 프로세스가 로드된 후, sema_up을 한 뒤에서야 부모 프로세스가 Ready 상태로 전환된다.
+ * 실행중인 프로세스가 자식 프로세스로 전환되었으므로, 이제야 위의 __do_fork()를 실행한다.
+ */
 	sema_down(&child->fork_sema); 
 
 	if (child->exit_status == TID_ERROR) // 자식 프로세스가 리소스를 복제하지 못했을 경우, 부모의 fork() 호출은 TID_ERROR를 반환한다.
@@ -742,7 +770,7 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 /** 2
  * extend file descriptor
  */
-process_insert_file(int fd, struct file *f) {
+int process_insert_file(int fd, struct file *f) {
 	struct thread *curr = thread_current();
 	struct file **fdt = curr->fdt;
 

@@ -10,7 +10,7 @@
 #include "vm/vm.h"
 #endif
 
-#define FDT_PAGES 3 // test `multi-oom` 테스트용
+#define FDT_PAGES 3 // test `multi-oom` 테스트용, 3미만의 값을 할당할 경우 test fail된다.
 #define FDCOUNT_LIMIT FDT_PAGES * (1 << 9) // 엔트리가 512개(2의 9승)) 인 이유: 페이지 크기 4kb (2의 12승) / 파일 포인터 8byte (2의 3승))
 
 /* States in a thread's life cycle. */
@@ -152,7 +152,7 @@ struct thread { // TCB 영역의 구성을 의미한다.
 	/** 2 system call
 	 * exit(), wait() 구현에 사용될 exit_status를 추가.
 	 */
-	int exit_status;
+	int exit_status; // 프로세스의 종료 유무를 확인한다.
 
  /** 2 file descriptor
  * 각 thread는 고유한 file descriptor table을 가지고 있어야 한다.
@@ -175,12 +175,12 @@ struct thread { // TCB 영역의 구성을 의미한다.
 	 * hierarchilcal process structure
 	 */
 	struct intr_frame parent_if;  // 부모 프로세스 if
-	struct list child_list;
-	struct list_elem child_elem;
+	struct list child_list; // 자식 프로세스 리스트
+	struct list_elem child_elem; // 자식 프로세스 리스트의 element
 
-	struct semaphore fork_sema;  // fork가 완료될 때 signal
-	struct semaphore exit_sema;  // 자식 프로세스 종료 signal
-	struct semaphore wait_sema;  // exit_sema를 기다릴 때 사용
+	struct semaphore fork_sema;  // process_fork()에서 자식 프로세스의 load()를 기다릴 때 사용한다.
+	struct semaphore exit_sema;  // process_wait()에서 자식 프로세스의 종료 상태를 받기 위해 사용한다.
+	struct semaphore wait_sema;  // process_wiat()에서 자식 프로세스가 종료되길 기다릴 때 사용한다.
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */

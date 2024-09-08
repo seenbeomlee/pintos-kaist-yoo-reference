@@ -118,9 +118,9 @@ syscall_handler (struct intr_frame *f UNUSED) {
 void 
 check_address (void *addr) {
 	/** 2
-	 * null 포인터,
-	 * 매핑되지 않은 가상 메모리를 가리키는 포인터,
-	 * 커널 가상 주소 공간(KERN_BASE 이상)을 요청하는 경우 거부해야 한다.
+	 * 1. null 포인터,
+	 * 2. 매핑되지 않은 가상 메모리를 가리키는 포인터,
+	 * 3. 커널 가상 주소 공간(KERN_BASE 이상)을 요청하는 경우 거부해야 한다.
 	 */
 	if (is_kernel_vaddr(addr) || addr == NULL || pml4_get_page(thread_current()->pml4, addr) == NULL)
 		exit(-1);
@@ -173,6 +173,7 @@ int open(const char *file) {
 
 	int fd = process_add_file(newfile);
 
+	// fd table이 가득 찼다면,
 	if (fd == -1)
 		file_close(newfile);
 
@@ -309,10 +310,9 @@ exec(const char *cmd_line)
 {
 	check_address(cmd_line);
 
-	off_t size = strlen(cmd_line) + 1;
+	off_t size = strlen(cmd_line) + 1; // 파일 사이즈는 NULL을 포함하기 위해서 +1을 해준다.
 	char *cmd_copy = palloc_get_page(PAL_ZERO);
-
-	if (cmd_copy == NULL)
+	if (cmd_copy == NULL) // 메모리 할당에 실패했을 경우
 		return -1;
 
 /** 2

@@ -39,6 +39,6 @@ int process_close_file(int fd);
  */
 struct thread *get_child_process(int pid);
 
-process_insert_file (int fd, struct file *f);
+int process_insert_file (int fd, struct file *f);
 
 #endif /* userprog/process.h */

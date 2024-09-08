@@ -579,6 +579,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->runn_file = NULL;
 	/** 2
 	 * hierarchical process structure
+	 * semaphore의 값은 '0'으로 초기화된다.
+	 * 부모 프로세스에서 먼저 호출하기 때문에, 부모 프로세스를 대기(wait 상태) 시키기 위해서는 '0'으로 만들어둬야한다.
 	 */
 	list_init(&t->child_list);
 	sema_init(&t->fork_sema, 0);
