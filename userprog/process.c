@@ -162,14 +162,21 @@ __do_fork (void *aux) {
 	if (parent->fd_idx >= FDCOUNT_LIMIT)
 		goto error;
 
-	current->fd_idx = parent->fd_idx;  // fdt 및 idx 복제
-	for (int fd = 3; fd < parent->fd_idx; fd++) {
-		if (parent->fdt[fd] == NULL)
-			continue;
-		current->fdt[fd] = file_duplicate(parent->fdt[fd]);
-	}
+	struct file *file;
 
-	sema_up(&current->fork_sema);  // fork 프로세스가 정상적으로 완료됐으므로 현재 fork용 sema unblock
+	for (int fd = 0; fd < FDCOUNT_LIMIT; fd++) {
+		file = parent->fdt[fd];
+		if (file == NULL)
+			continue;
+
+		if (file > STDERR)
+			current->fdt[fd] = file_duplicate(file);
+		else
+			current->fdt[fd] = file;
+}
+
+	current->fd_idx = parent->fd_idx;
+	sema_up(&current->fork_sema);  
 
 	process_init();
 
