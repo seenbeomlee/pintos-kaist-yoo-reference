@@ -116,4 +116,16 @@ void vm_dealloc_page (struct page *page);
 bool vm_claim_page (void *va);
 enum vm_type page_get_type (struct page *page);
 
+/** 3
+ * spt에 넣을 인덱스를 해시 함수를 돌려서 도출한다.
+ * hash table이 hash elem을 원소로 가지고 있으므로 페이지 자체에 대한 정보를 가져온다.
+ * 인덱스를 리턴해야하므로, hash_bytes로 리턴한다.
+ */
+uint64_t page_hash(const struct hash_elem *e, void *aux);
+
+/** 3
+ * 
+ */
+bool page_less(const struct hash_elem *a, const struct hash_elem *b, void *aux);
+
 #endif  /* VM_VM_H */

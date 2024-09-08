@@ -190,8 +190,10 @@ vm_do_claim_page (struct page *page) {
 }
 
 /* Initialize new supplemental page table */
+// hash table을 사용하므로, hash_init()을 사용하여 초기화한다.
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
+	hash_init(spt, page_hash, page_less, NULL);
 }
 
 /* Copy supplemental page table from src to dst */
@@ -205,4 +207,20 @@ void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+}
+
+/** 3
+ * hash_entry : elem이 소속되어있는 structure의 포인터를 반환한다. structure의 type은 page가 된다.
+ * hash_bytes : buf에서 인자 size만큼의 hash를 반환한다.
+ */
+uint64_t page_hash(const struct hash_elem *e, void *aux) {
+	struct page *page = hash_entry(e, struct page, hash_elem);
+	return hash_bytes(page->va, sizeof *page->va);
+}
+
+bool page_less(const struct hash_elem *a, const struct hash_elem *b, void *aux) {
+	struct page *page_a = hash_entry(a, struct page, hash_elem);
+	struct page *page_b = hash_entry(b, struct page, hash_elem);
+
+	return page_a->va < page_b->va;
 }
