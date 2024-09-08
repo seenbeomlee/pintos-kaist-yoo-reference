@@ -56,6 +56,20 @@ static struct frame *vm_evict_frame (void);
  * uninit 타입의 페이지로 초기화한다.
  * 필드 수정은 uninit_new를 호출한 이후에 해야 한다.
  * 생성한 페이지를 SPT에 추가한다.
+ * 
+ * 페이지가 초기화되는 과정은 다음과 같다.
+ * uninit 페이지 구조체 생성 : 커널이 새로운 페이지 요청을 받으면, vm_allock_page_with_initializer 함수가 호출된다.
+ * 이 함수는 페이지 구조체를 생성하고, 이 구조체에 페이지 유형에 맞는 적절한 초기화 함수들을 담아둔다.
+ * (이때, 초기화를 하지는 않고, 초기화할 때 어떤 함수를 사용해야 하는지 담아만! 둔다.)
+ * 이렇게 초기화되지 않은 상태의 페이지 타입은 VM과 uninitialized의 약자를 합친 VM_UNINIT이다.
+ * 
+ * lazy_loading을 구현하게 되면, 위에서 언급한 바와 같이 user 프로그램이 새 페이지에 처음 접근했을 때 page fault가 발생하게 되는데,
+ * 그 이유는, 내용이 없을 뿐더러 할당된 물리 프레임도 없기 때문이다.
+ * 
+ * page fault가 발생했을 때 접근한 메모리의 physical frame이 존재하지 않는다는 것이 확인되면 이때가 바로 loading()이 필요한 시점이다.
+ * 이때 물리 프레임을 할당하고나서 uninit_initialize가 호출되면서 앞서 설정한 초기화 함수들이 호출되어 드디어 초기화가 이루어진다.
+ * 초기화 함수는 익명 페이지의 경우 anon_initializer, 파일 기반 페이지의 경우 file_backed_initializer이다.
+ * 페이지 별 초기화 함수 외에도 lazy_load_segment 함수가 호출되며 이 함수에서 내용이 로드된다.
  */
 bool
 vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
@@ -66,17 +80,19 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 
 	/* Check wheter the upage is already occupied or not. */
-	if (spt_find_page (spt, upage) == NULL) {
+	if (spt_find_page (spt, upage) == NULL) { // upage가 이미 사용중인지 확인한다.
 		/* TODO: Create the page, fetch the initialier according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
 
 		/* TODO: Insert the page into the spt. */
+		// 1) 페이지를 생성하고,
 		struct page *page = malloc(sizeof(struct page));
 
 		if (!page)
 			goto err;
 
+		// 2) type에 따라 초기화 함수를 가져와서,
 		typedef bool (*initializer_by_type)(struct page *, enum vm_type, void *);
 		initializer_by_type initializer = NULL; // NULL은 VM_UNINIT의 initializer 인가보다.
 
@@ -89,9 +105,25 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 				break;
 		}
 
+/** 3
+ * page == 초기화할 page 구조체
+ * upage == page를 할당한 가상 주소
+ * init() == page의 내용을 초기화하는 함수
+ * aux == init()에 필요한 보조값
+ * initializer == page를 type에 맞게 초기화하는 함수
+ * 
+ * 실제로 C 언어에서는 '클래스'나 '상속' 개념이 없지만, 객체지향 프로그래밍의 '클래스 상속' 개념을 도입하기 위해 함수 포인터를 사용한다.
+ */
+		// 3) uninit 타입의 페이지로 초기화한다.
 		uninit_new(page, upage, init, type, aux, initializer);
+/** 3
+ * 필드의 값을 수정할 때는 uninit_new 함수가 호출된 이후에 수정해야 한다.
+ * uninit_new 함수 안에서 구조체 내용이 전부 새로 할당되기 때문이다.
+ * uninit_new 함수 호출 이전에는 아무리 값을 추가해도 다 날라간다.
+ */
 		page->writable = writable;
 		
+		// 4) 생성한 페이지를 spt에 추가한다.
 		return spt_insert_page(spt, page);
 	}
 err:

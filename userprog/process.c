@@ -889,11 +889,37 @@ install_page (void *upage, void *kpage, bool writable) {
  * If you want to implement the function for only project 2, implement it on the
  * upper block. */
 
+/** 3
+ * anonymous page
+ * 이 함수는 실행 파일의 내용을 페이지로 로딩하는 함수이며, 첫 번째 page fault가 발생할 때 호출된다.
+ * 이 함수가 호출되기 이전에 물리 프레임 매핑이 진행되므로, 여기서는 물리 프레임에 내용을 로딩하는 작업만 하면 된다.
+ * 
+ * 이 함수는 page 구조체와 aux를 인자로 받는다.
+ * aux는 load_segment에서 로딩을 위해 설정해둔 정보인 vm_load_arg 이다.
+ * aux를 사용하여 읽어올 파일을 찾아서 메모리에 로딩한다.
+ */
 static bool
 lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
+		struct vm_load_arg *aux_p = aux;
+    struct file *file = aux_p->file;
+    off_t offset = aux_p->ofs;
+    size_t page_read_bytes = aux_p->read_bytes;
+    size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+		// 1) 파일의 position을 ofs로 지정한다.
+    file_seek(file, offset);               
+		// 2) 파일을 read_bytes만큼 물리 프레임에 읽어들인다.                                              
+    if (file_read(file, page->frame->kva, page_read_bytes) != (off_t)page_read_bytes) {  
+			palloc_free_page(page->frame->kva);                                            
+			return false;
+    }
+		// 3) 다 읽은 지점부터 zero_bytes만큼 0으로 채운다.
+    memset(page->frame->kva + page_read_bytes, 0, page_zero_bytes);  
+
+    return true;
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
@@ -910,30 +936,65 @@ lazy_load_segment (struct page *page, void *aux) {
  *
  * Return true if successful, false if a memory allocation error
  * or disk read error occurs. */
+/** 3
+ * anonymous page
+ * 이 함수는 프로세스가 실행될 때 실행 파일을 현재 스레드로 로드하는 함수는 load() 에서 호출된다.
+ * 파일의 내용을 upage에 로드하는 함수이다.
+ * 파일의 내용을 로드하기 위해서 upage를 할당할 page가 필요한데, vm_alloc_page_with_initializer()를 호출해서 page를 생성한다.
+ * 
+ * Lazy loading을 사용해야하므로, 여기서 바로 파일의 내용을 로드하지 않아야 한다.
+ * 그래서 page에 내용을 로드할 때 사용할 함수와 필요한 인자들을 넣어줘야 한다.
+ * vm_alloc_page_with_initializer의 네 번째(lazy_load_segment), 다섯 번째(aux) 인자가 각각 로드할 때 사용할 함수와 인자에 해당한다.
+ * 
+ * 내용을 로드할 때 사용할 함수는 lazy_load_segment를 사용하고, 인자는 직접 만들어서 넘겨주어야 한다.
+ * lazy_load_segment에서 필요로 하는 인자는 아래와 같다.
+ * 1. file == 내용이 담긴 파일 객체
+ * 2. ofs == 이 페이지에서 읽기 시작할 위치
+ * 3. read_bytes == 이 페이지에서 읽어야 하는 바이트 수
+ * 4. zero_bytes == 이 페이지에서 read_bytes 만큼 읽고 공간이 남아 0으로 채워야 하는 바이트 수
+ * 
+ * vm_load_arg 라는 구조체를 새로 정의해서 위 정보들을 담아, vm_alloc_page_with_initializer의 마지막 인자(aux)로 전달한다.
+ * 이제 page fault가 처음 발생했을 때, lazy_load_segment가 실행되고, vm_load_arg 인자로 사용되어 내용이 로딩될 것이다.
+ */
 static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		uint32_t read_bytes, uint32_t zero_bytes, bool writable) {
-	ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
-	ASSERT (pg_ofs (upage) == 0);
-	ASSERT (ofs % PGSIZE == 0);
+	ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0); // read_bytes + zero_bytes가 페이지 크기(PGSIZE)의 배수인지 확인
+	ASSERT (pg_ofs (upage) == 0); // upage가 페이지 정렬되어 있는지 확인
+	ASSERT (ofs % PGSIZE == 0); // ofs가 페이지 정렬되어 있는지 확인
 
-	while (read_bytes > 0 || zero_bytes > 0) {
+	while (read_bytes > 0 || zero_bytes > 0) { // read_bytes와 zero_bytes가 0보다 큰 동안 루프를 실행한다.
 		/* Do calculate how to fill this page.
 		 * We will read PAGE_READ_BYTES bytes from FILE
 		 * and zero the final PAGE_ZERO_BYTES bytes. */
-		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+		// 이 페이지를 채우는 방법을 계산한다.
+		// 파일에서 PAGE_READ_BYTES 만큼 읽고 나머지 PAGE_ZERO_BYTES 만큼 0으로 채운다.
+		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE; // 최대로 읽을 수 있는 크기는 PGSIZE
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
-		void *aux = NULL;
+		// void *aux = NULL;
+		/** Project 3-Anonymous Page
+		 * vm_alloc_page_wtih_initializer에 제공할 aux 인수로 필요한 보조 값들을 설정해야 한다.
+		 * loading을 위해 필요한 정보를 포함하는 구조체를 만든다.
+		 */
+		struct vm_load_arg *aux = (struct vm_load_arg *)malloc(sizeof(struct vm_load_arg));
+		aux->file = file; // 내용이 담긴 파일 객체
+		aux->ofs = ofs; // 이 페이지에서 읽기 시작할 위치
+		aux->read_bytes = page_read_bytes; // 이 페이지에서 읽어야 하는 바이트 수
+		// auz->zero_bytes = page_zero_bytes // 이 페이지에서 read_bytes만큼 읽고 공간이 남아 0으로 채워야 하는 바이트 수
+
+		// upage를 할당하기 위해서 vm_alloc_page_with_initializer()를 호출하여 page를 생성한다.
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
 					writable, lazy_load_segment, aux))
 			return false;
 
 		/* Advance. */
+		// 다음 반복을 위해 읽어들인 만큼 값을 갱신한다.
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
+		ofs += page_read_bytes; // 읽어들인 만큼 ofs 이동시킨다.
 	}
 	return true;
 }
