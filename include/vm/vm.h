@@ -153,4 +153,9 @@ uint64_t page_hash(const struct hash_elem *e, void *aux);
  */
 bool page_less(const struct hash_elem *a, const struct hash_elem *b, void *aux);
 
+/** 3
+ * supplmental page
+ */
+void hash_page_destroy(struct hash_elem *e, void *aux);
+
 #endif  /* VM_VM_H */

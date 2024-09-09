@@ -333,16 +333,74 @@ supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 }
 
 /* Copy supplemental page table from src to dst */
+/** 3
+ * supplemental page table == SPT
+ * 자식 프로세스를 생성할 때, 부모 프로세스의 SPT도 자식에게 상속해주어야 하는데, 그때 사용되는 함수이다.
+ * 부모 프로세스의 SPT에 있는 모든 페이지를 각 타입에 맞게 할당을 받고, uninit 상태가 아니라면,
+ * 즉, 내용이 로딩된 상태라면 바로 매핑을 진행해서 내용까지 그대로 복사한다.
+ * 
+ * file-backed page인 경우에는 다른 처리가 필요하지만, anonymous page 파트에서는 필요하지 않다.
+ * file-backed page를 할 때 추가한다.
+ */
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 		struct supplemental_page_table *src UNUSED) {
+	struct hash_iterator i;
+	hash_first(&i, &src->spt_hash);
+	while (hash_next(&i)) {
+		// src_page 정보,
+		struct page *src_page = hash_entry(hash_cur(&i), struct page, hash_elem);
+		enum vm_type src_type = src_page->operations->type;
+		// 1) type이 uninit 이면,
+		if (src_type == VM_UNINIT) { // uninit page 생성 & 초기화
+			vm_alloc_page_with_initializer(
+				src_page->uninit.type,
+				src_page->va,
+				src_page->writable,
+				src_page->uninit.init,
+				src_page->uninit.aux);
+		}
+		// 2) type이 uninit이 아니라면,
+		else { // 1) uninit page 생성 및 초기화 -> 2) vm_claim으로 요청해서 매핑 & 페이지 타입에 맞게 초기화
+			if (vm_alloc_page(src_type, src_page->va, src_page->writable) && vm_claim_page(src_page->va)) {
+				// 매핑된 프레임에 내용 로딩
+				struct page *dst_page = spt_find_page(dst, src_page->va);
+				memcpy(dst_page->frame->kva, src_page->frame->kva, PGSIZE);
+			}
+		}
+	}
+	return true;
 }
 
 /* Free the resource hold by the supplemental page table */
+/** 3
+ * supplemental page table
+ * 이 함수는 프로세스가 종료될 때와 실행될 때 process_cleanup()에서 호출된다.
+ * 
+ * 페이지 항목들을 순회하며 테이블 내의 페이지들의 타입에 맞는 destroy 함수를 호출한다.
+ * destroy 매크로를 사용하면 페이지 타입에 따라서 uninit_destroy 혹은 anon_destroy 함수가 호출된다.
+ * 할당받은 메모리가 있을 경우에는 이 페이지로 인해 유지되던 리소스를 해제해야 하지만, 현재는 별도로 할당받은 메모리가 없어서 비워둔다.
+ * 
+ * 여기서는 hash table은 두고 안의 요소들만 지워줘야 한다. -> hash_clear()을 사용한다.
+ * 반면, hash_destroy() 함수를 사용하면 hash가 사용하던 메모리(hash->bucket) 자체도 반환한다.
+ * 
+ * process가 실행될 때, hash_table을 생성한 이후에 process_cleanup()이 호출된다.
+ * 이때는 hash table은 남겨두고 안의 요소들만 제거되어야 한다.
+ * hash table까지 지워버리면 만들자마자 지워버리는 것이 된다.
+ * process가 실행될 때 빈 hash table이 있어야 하므로,
+ * hash table은 남겨두고 안의 요소들만 지워야 하는 것이다.
+ */
 void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+	hash_clear(&spt->spt_hash, hash_page_destroy); // hash table의 모든 요소를 제거한다.
+}
+
+void hash_page_destroy(struct hash_elem *e, void *aux) {
+	struct page *page = hash_entry(e, struct page, hash_elem);
+	destroy(page);
+	free(page);
 }
 
 /** 3
