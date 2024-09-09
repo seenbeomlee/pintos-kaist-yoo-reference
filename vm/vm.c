@@ -69,12 +69,13 @@ err:
 }
 
 /* Find VA from spt and return page. On error, return NULL. */
-struct page *
-spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
-	struct page *page = NULL;
-	/* TODO: Fill this function. */
+struct page * spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
+	struct page *page = (struct page *)malloc(sizeof(struct page));     
+	page->va = pg_round_down(va); // va에 해당하는 hash_elem 찾기                                       
+	struct hash_elem *e = hash_find(&spt->spt_hash, &page->hash_elem);  
+	free(page);                                              
 
-	return page;
+	return e != NULL ? hash_entry(e, struct page, hash_elem) : NULL; // 있다면, e에 해당하는 페이지를 반환한다. 없다면, NULL 반환한다.
 }
 
 /* Insert PAGE into spt with validation. */
@@ -123,7 +124,6 @@ vm_evict_frame (void) {
  */
 static struct frame *
 vm_get_frame (void) {
-	struct frame *frame = NULL;
 	/* TODO: Fill this function. */
 	struct frame *frame = (struct frame *)malloc(sizeof(struct frame));
 	ASSERT (frame != NULL);
@@ -201,7 +201,6 @@ vm_dealloc_page (struct page *page) {
  */
 bool
 vm_claim_page (void *va UNUSED) {
-	struct page *page = NULL;
 	struct page *page = spt_find_page(&thread_current()->spt, va);
 
 	if (page == NULL)
@@ -271,13 +270,4 @@ bool page_less(const struct hash_elem *a, const struct hash_elem *b, void *aux) 
 	struct page *page_b = hash_entry(b, struct page, hash_elem);
 
 	return page_a->va < page_b->va;
-}
-
-struct page* spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
-	struct page *page = (struct page *)malloc(sizeof(struct page));     
-	page->va = pg_round_down(va); // va에 해당하는 hash_elem 찾기                                       
-	struct hash_elem *e = hash_find(&spt->spt_hash, &page->hash_elem);  
-	free(page);                                              
-
-	return e != NULL ? hash_entry(e, struct page, hash_elem) : NULL; // 있다면, e에 해당하는 페이지를 반환한다. 없다면, NULL 반환한다.
 }
