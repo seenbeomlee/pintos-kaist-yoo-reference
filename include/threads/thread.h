@@ -185,6 +185,14 @@ struct thread { // TCB 영역의 구성을 의미한다.
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
 	struct supplemental_page_table spt;
+
+	/** 3
+	 * anonymous page
+	 * 스택의 맨 아래 위치를 가리키는 포인터를 추가한다.
+	 * 메모리를 상향으로 증가시키기 때문에 페이지 크기만큼 빼준 뒤 공간을 할당해야 한다. 
+	 */
+	void *stack_bottom;
+	void *stack_pointer;
 #endif
 
 	/* Owned by thread.c. */

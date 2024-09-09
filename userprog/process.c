@@ -1000,16 +1000,44 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 }
 
 /* Create a PAGE of stack at the USER_STACK. Return true on success. */
+/** 3
+ * anonymous page
+ * 프로세스가 실행될 때 load() 함수 안에서 호출되며, STACK의 페이지를 생성하는 함수이다.
+ * 스택은 아래로 성장하므로, 스택의 시작점인 USER_STACK에서 PGSIZE만큼 아래로 내린 지점(stack_bottom)에서 페이지를 생성한다.
+ * 첫 번째 스택 페이지는 lazy loading을 할 필요가 없다.
+ * 프로세스가 실행될 때 이 함수가 불리고 나서 command line arguments를 스택에 추가하기 위해 이 주소에 바로 접근하기 때문이다.
+ * 따라서, 이 주소에서 fault가 발생할 때까지 기다릴 필요없이 바로 물리 프레임을 할당시켜 놓는다.
+ * 페이지를 할당받을 때 이 페이지가 스택의 페이지임을 표시하기 위해 보조 마커를 사용한다. (VM_MARKER_0)를 사용한다.
+ * => 스택에서 할당받는 페이지에 이 마커로 표시해두면, 나중에 이 페이지가 스택의 페이지인지 아닌지 마커를 통해서 알 수 있다.
+ * 마지막으로, rsp값을 USER_STACK으로 변경해준다. 이제, argument_stack 함수에서 이 위치(rsp)부터 인자를 push하게 된다.
+ */
 static bool
 setup_stack (struct intr_frame *if_) {
 	bool success = false;
+	// 스택은 아래로 성장하므로, USER_STACK에서 PGSIZE만큼 아래로 내린 지점에서 페이지를 생성한다.
 	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
 
 	/* TODO: Map the stack on stack_bottom and claim the page immediately.
 	 * TODO: If success, set the rsp accordingly.
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
-
+	/** stack_bottom에 스택을 매핑하고 페이지를 즉시 요청하세요.
+	 * 성공하면, rsp를 그에 맞게 설정하세요.
+	 * 페이지가 스택임을 표시해야 합니다.
+	 * 
+	 * 1) stack_bottom에 페이지를 하나 할당받는다.
+	 * VM_MAERKER_0 == 스택이 저장된 메모리 페이지임을 식별하기 위해 추가
+	 * 1 == writable은 argument_stack()에서 값을 넣어야 하니 true로 설정한다.
+	 */
+	if (vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, 1)) { 
+		// 2) 할당받은 페이지에 바로 물리 프레임을 매핑한다.
+		success = vm_claim_page(stack_bottom);
+		if (success) {
+			// 3) rsp를 변경한다. (argument_stack에서 이 위치부터 인자를 push 한다.)
+			if_->rsp = USER_STACK;
+			thread_current()->stack_bottom = stack_bottom;
+		}
+	}
 	return success;
 }
 #endif /* VM */

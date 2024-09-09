@@ -131,12 +131,13 @@ err:
 }
 
 /* Find VA from spt and return page. On error, return NULL. */
-struct page *
-spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
-	struct page *page = NULL;
-	/* TODO: Fill this function. */
+struct page* spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
+	struct page *page = (struct page *)malloc(sizeof(struct page));     
+	page->va = pg_round_down(va); // va에 해당하는 hash_elem 찾기                                       
+	struct hash_elem *e = hash_find(&spt->spt_hash, &page->hash_elem);  
+	free(page);                                              
 
-	return page;
+	return e != NULL ? hash_entry(e, struct page, hash_elem) : NULL; // 있다면, e에 해당하는 페이지를 반환한다. 없다면, NULL 반환한다.
 }
 
 /* Insert PAGE into spt with validation. */
@@ -185,7 +186,6 @@ vm_evict_frame (void) {
  */
 static struct frame *
 vm_get_frame (void) {
-	struct frame *frame = NULL;
 	/* TODO: Fill this function. */
 	struct frame *frame = (struct frame *)malloc(sizeof(struct frame));
 	ASSERT (frame != NULL);
@@ -215,6 +215,23 @@ vm_handle_wp (struct page *page UNUSED) {
 
 /* Return true on success */
 /** 3
+ * anonymous page
+ * 마지막으로, spt_find_page()를 통해 SPT를 참조하여 faulted address에 해당하는 페이지 구조체를 해결하도록 vm_try_handle_fault 함수를 수정해야 한다.
+ * page_fault()가 발생하면 제어권을 전달받는 함수이다.
+ * 이 함수에서 할당된 물리프레임이 존재하지 않아서 발생한 예외일 경우에는 매개변수인 not_present에 true를 전달받는다.
+ * 그럴 경우, SPT에서 해당 주소에 해당하는 페이지가 있는지 확인해서 존재한다면 해당 페이지에 물리 프레임 할당을 요청하는 vm_do_claim_page() 함수를 호출한다.
+ * 이 함수에서는 위에서 설정한대로 각 페이지에 맞는 초기화 함수가 호출된다.
+ * 
+ * not_present 값이 false인 상황을 살펴보면, 
+ * 물리 프레임이 할당되어 있지만 page fault가 일어난 것이므로 그 경우는 read_only page에 write를 한 경우가 된다.
+ * 따라서, not_present 값이 false인 경우는 예외로 처리하면 된다. (return false)
+ * 
+ * not_present 값이 true인 경우에도, read-only page에 write 요청을 할 경우가 생길 수 있으므로, 이에 대한 예외 처리를 추가한다.
+ */
+bool
+vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
+		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
+/** 3
  * 'f' : page fault 예외가 발생할 때 실행되던 context 정보가 담겨있는 interrupt frame 이다.
  * 
  * 'addr' : page fault 예외가 발생할 때 접근한 virtual address 이다.
@@ -232,15 +249,24 @@ vm_handle_wp (struct page *page UNUSED) {
  * - true : user에 의한 접근에 해당한다.
  * - false : kernel에 의한 접근에 해당한다.
  */
-bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
 	struct page *page = NULL;
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
+   
+	if (addr == NULL || is_kernel_vaddr(addr))
+		return false;
 
-	return vm_do_claim_page (page);
+	if (not_present) // 접근한 메모리의 physical page가 존재하지 않는 경우
+	{
+		page = spt_find_page(spt, addr);
+		if (page == NULL)
+			return false;
+		if (write == 1 && page->writable == 0) // write가 불가능한 페이지에 write 요청한 경우
+			return false;
+		return vm_do_claim_page(page);
+	}
+	return false;
 }
 
 /* Free the page.
@@ -263,7 +289,6 @@ vm_dealloc_page (struct page *page) {
  */
 bool
 vm_claim_page (void *va UNUSED) {
-	struct page *page = NULL;
 	// spt에서 va에 해당하는 page 찾기
 	struct page *page = spt_find_page(&thread_current()->spt, va);
 
@@ -334,13 +359,4 @@ bool page_less(const struct hash_elem *a, const struct hash_elem *b, void *aux) 
 	struct page *page_b = hash_entry(b, struct page, hash_elem);
 
 	return page_a->va < page_b->va;
-}
-
-struct page* spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
-	struct page *page = (struct page *)malloc(sizeof(struct page));     
-	page->va = pg_round_down(va); // va에 해당하는 hash_elem 찾기                                       
-	struct hash_elem *e = hash_find(&spt->spt_hash, &page->hash_elem);  
-	free(page);                                              
-
-	return e != NULL ? hash_entry(e, struct page, hash_elem) : NULL; // 있다면, e에 해당하는 페이지를 반환한다. 없다면, NULL 반환한다.
 }
