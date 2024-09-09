@@ -61,9 +61,9 @@ struct page {
 #ifdef EFILESYS
 		struct page_cache page_cache;
 #endif
+	};
 	struct hash_elem hash_elem; // supplemental page table
 	bool writable; // frame management
-	};
 };
 
 /* The representation of "frame" */
