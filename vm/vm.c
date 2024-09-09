@@ -71,8 +71,7 @@ static struct frame *vm_evict_frame (void);
  * 초기화 함수는 익명 페이지의 경우 anon_initializer, 파일 기반 페이지의 경우 file_backed_initializer이다.
  * 페이지 별 초기화 함수 외에도 lazy_load_segment 함수가 호출되며 이 함수에서 내용이 로드된다.
  */
-bool
-vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
+bool vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		vm_initializer *init, void *aux) {
 
 	ASSERT (VM_TYPE(type) != VM_UNINIT)
@@ -250,15 +249,14 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
  * - false : kernel에 의한 접근에 해당한다.
  */
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
-	struct page *page = NULL;
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
-   
+	struct page *page = spt_find_page(&thread_current()->spt, addr);
+
 	if (addr == NULL || is_kernel_vaddr(addr))
 		return false;
 
-	if (not_present) // 접근한 메모리의 physical page가 존재하지 않는 경우
-	{
+	if (not_present) { // 접근한 메모리의 physical page가 존재하지 않는 경우
 		page = spt_find_page(spt, addr);
 		if (page == NULL)
 			return false;
@@ -409,7 +407,7 @@ void hash_page_destroy(struct hash_elem *e, void *aux) {
  */
 uint64_t page_hash(const struct hash_elem *e, void *aux) {
 	struct page *page = hash_entry(e, struct page, hash_elem);
-	return hash_bytes(page->va, sizeof *page->va);
+	return hash_bytes(&page->va, sizeof page->va);
 }
 
 bool page_less(const struct hash_elem *a, const struct hash_elem *b, void *aux) {

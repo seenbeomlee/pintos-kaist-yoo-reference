@@ -116,15 +116,17 @@ syscall_handler (struct intr_frame *f UNUSED) {
  * pintos에서는 시스템 콜이 접근할 수 있는 주소를 0cx0000000 ~ 0x8048000(== KERN_BASE) 으로 제한한다. (이 이상은 커널 영역이다.)
  * 유저 영역을 벗어난 영역일 경우, 비정상 접근이라고 판단하여 exit(-1)로 프로세스를 종료한다.
  */
-void 
-check_address (void *addr) {
+void check_address (void *addr) {
 	/** 2
 	 * 1. null 포인터,
 	 * 2. 매핑되지 않은 가상 메모리를 가리키는 포인터,
 	 * 3. 커널 가상 주소 공간(KERN_BASE 이상)을 요청하는 경우 거부해야 한다.
 	 */
-	if (is_kernel_vaddr(addr) || addr == NULL || pml4_get_page(thread_current()->pml4, addr) == NULL)
-		exit(-1);
+    thread_t *curr = thread_current();
+
+    if (is_kernel_vaddr(addr) || addr == NULL || pml4_get_page(curr->pml4, addr) == NULL) {
+			exit(-1);
+		}
 }
 #else
 /** 3
@@ -133,8 +135,9 @@ check_address (void *addr) {
 struct page *check_address(void *addr) {
 	struct thread *curr = thread_current();
 
-	if (is_kernel_vaddr(addr) || addr == NULL || !spt_find_page(&curr->spt, addr))
+	if (is_kernel_vaddr(addr) || addr == NULL || !spt_find_page(&curr->spt, addr)) {
 		exit(-1);
+	}
 
 	return spt_find_page(&curr->spt, addr);
 }
