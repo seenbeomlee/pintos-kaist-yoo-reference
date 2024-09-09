@@ -109,6 +109,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	}
 }
 
+#ifndef VM
 /** 2
  * 주소 값이 user 영역에서 사용하는 주소 값인지 확인한다.
  * user 영역을 벗어난 영역일 경우, process를 종료한다. (exit (-1))
@@ -125,6 +126,19 @@ check_address (void *addr) {
 	if (is_kernel_vaddr(addr) || addr == NULL || pml4_get_page(thread_current()->pml4, addr) == NULL)
 		exit(-1);
 }
+#else
+/** 3
+ * system call 수정
+*/
+struct page *check_address(void *addr) {
+	struct thread *curr = thread_current();
+
+	if (is_kernel_vaddr(addr) || addr == NULL || !spt_find_page(&curr->spt, addr))
+		exit(-1);
+
+	return spt_find_page(&curr->spt, addr);
+}
+#endif
 
 void halt (void) {
  power_off(); // 핀토스를 종료시키는 시스템 콜이다.

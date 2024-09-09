@@ -145,7 +145,14 @@ page_fault (struct intr_frame *f) {
 	 * Page fault 에러 메시지 출력으로 인해 test case가 fail 처리 됨
 	 * 에러 메시지 출력을 방지하기 위해 exit(-1) 을 호출 하도록 수정
 	 */
-	exit(-1);
+	// exit(-1);
+
+  /** 3
+	 */
+	if ((!not_present && write) || (fault_addr < 0x400000 || fault_addr >= USER_STACK))
+	{
+		exit(-1);
+	}
 
 #ifdef VM
 	/* For project 3 and later. */

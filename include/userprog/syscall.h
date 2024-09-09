@@ -10,7 +10,11 @@ struct lock filesys_lock;  // 파일 읽기/쓰기 용 lock
 
 void syscall_init (void);
 
+#ifndef VM
 void check_address (void *addr);
+#else
+struct page *check_address(void *addr);
+#endif
 
 /** 2
  * power_off()를 호출해서 Pintos를 종료한다.
