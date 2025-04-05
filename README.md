@@ -1,1 +1,1 @@
-# CSED312_OS-kaist-yoo-reference
+# pintos-kaist-yoo-reference
